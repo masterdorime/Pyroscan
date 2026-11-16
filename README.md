@@ -43,7 +43,7 @@ preloaded demo database and prebuilt mission assets, so NodeODM and Ollama are
 not required for the dashboard.
 
 ```powershell
-python -m pip install fastapi uvicorn requests numpy pillow tifffile
+python -m pip install fastapi uvicorn requests numpy pillow tifffile rasterio
 python -m uvicorn server.api:app --host 127.0.0.1 --port 8000
 ```
 
@@ -88,11 +88,13 @@ Docs/                   design spec, handoff, reference gallery
 
 This is a working vertical slice, not a production deployment. Known gaps:
 
-- **Provider layer (Phase 1, shipped):** weather and wind come from BMKG
-  (Indonesia) with Open-Meteo as the global fallback, and regional active-fire
-  detections from NASA FIRMS NRT. Every reading shows its source and age, and a
-  **Live data** card lists them. Phase 2–5 (Copernicus DEM, Sentinel-2 imagery,
-  OSM/Photon place names) are planned but not built. See
+- **Provider layer (Phase 1–2, shipped):** weather and wind come from BMKG
+  (Indonesia) with Open-Meteo as the global fallback, regional active-fire
+  detections from NASA FIRMS NRT, and **30 m context terrain** from Copernicus
+  DEM. Every reading shows its source and age in the **Live data** card. The
+  Context view now has real relief; the ground is still context, not
+  reconstruction. Phase 3–5 (Sentinel-2 imagery, OSM/Photon place names,
+  hardening) are planned. See
   `Docs/specs/2026-11-16-free-provider-layer-design.md`.
 - YOLO fire/smoke detections are not wired; hotspot positions are fixtures.
 - The watcher/NodeODM path has not been exercised on a new flight.

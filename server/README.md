@@ -61,6 +61,7 @@ python -m server.watcher --interval 5
 | GET | `/api/v1/missions/{id}/providers/{key}` | one provider result |
 | POST | `/api/v1/missions/{id}/providers/refresh` | queue a refresh (202) |
 | GET | `/api/v1/missions/{id}/regional_fires` | NASA FIRMS detections in the ring |
+| GET | `/api/v1/missions/{id}/context/dem` | cached 30 m context heightmap |
 | GET | `/api/v1/events` | SSE heartbeat (mission events next) |
 
 ## Providers (Phase 1)
@@ -72,6 +73,12 @@ gateway in `server/providers/`. The browser never calls a provider.
 |---|---|---|---|
 | `weather` | BMKG → Open-Meteo | none | 20 min |
 | `regional_fires` | NASA FIRMS NRT | `PYROSCAN_FIRMS_MAP_KEY` | 2 h |
+| `context_dem` | Copernicus DEM 30 m | none | 30 d |
+
+- `context_dem` downloads one ~34–42 MB tile, crops it to a 256² ring
+  heightmap, writes ~700 KB beside the envelope, and deletes the tile. Measured:
+  every remote read transfers the whole object, so windowed reads are not used.
+  A ring crossing a 1° cell boundary is clipped and flagged, not mosaicked.
 
 - Cache: `server/cache/providers/<mission_id>/<key>.envelope.json` (gitignored,
   disposable — delete a mission's folder to force a refetch).

@@ -2,11 +2,21 @@
 
 **Date:** 2026-11-16
 **Repo:** https://github.com/masterdorime/Pyroscan (public, `main`). Raw drone data and the reference video are not committed; the demo DB, mission assets, Cesium bundle, and screenshots are.
-**Status: Phase 1 shipped** — provider gateway + BMKG/Open-Meteo weather +
-NASA FIRMS regional detections + per-provider source/age in the API and
-dashboard. Phases 2–5 (Copernicus DEM, Sentinel-2, OSM/Photon, hardening) are
-planned, not built. Spec: `Docs/specs/2026-11-16-free-provider-layer-design.md`;
-plan: `Docs/plans/2026-11-16-free-provider-layer-phase-1.md`.
+**Status: Phase 2 shipped** — provider gateway + BMKG/Open-Meteo weather +
+NASA FIRMS regional detections + Copernicus 30 m context terrain, all with
+per-provider source/age. Phases 3–5 (Sentinel-2, OSM/Photon, hardening) are
+planned, not built. Specs and plans: `Docs/specs/2026-11-16-free-provider-layer-design.md`,
+`Docs/plans/2026-11-16-free-provider-layer-phase-1.md`,
+`Docs/plans/2026-11-16-free-provider-layer-phase-2.md`.
+
+**Phase 2 measured facts.** A Copernicus tile is 34 MB (Brighton) / 42 MB
+(S07 Indonesia). Every remote read transferred the whole object, even for one
+pixel, so the adapter downloads once, crops to a 256² ring heightmap, and
+deletes the tile. Cached cost is ~700 KB per mission, not the 25 MB the spec
+originally budgeted. A ring crossing a 1° cell boundary is clipped and flagged
+(`clipped: true`), not mosaicked. Context renders relief over the 1.35 km
+mosaic footprint only, anchored so the DEM at the mission centre meets the old
+plane — the shape is real, the absolute datum is tied to the mission.
 
 **Architecture (Phase 1).** `server/providers/` holds one adapter per source and
 one `Gateway` that owns a per-mission file cache, read-time status derivation,

@@ -818,7 +818,7 @@ the dashboard.
 |---|---|---|
 | `weather` | 3 KB | 40 KB (72 h forecast) |
 | `regional_fires` | 20 KB | 120 KB (500 detections) |
-| `context_dem` | 25 MB (1–2 tiles) | 60 MB |
+| `context_dem` | 0.7 MB (256² JSON) | 1.2 MB |
 | `context_imagery` | 3 MB | 10 MB |
 | `places` | 8 KB | 30 KB |
 | envelopes | 2 KB each | — |
