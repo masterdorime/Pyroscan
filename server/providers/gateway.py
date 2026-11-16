@@ -50,6 +50,7 @@ class Gateway:
                   data: dict, *, fail_count: int = 0,
                   last_error: str | None = None,
                   last_error_kind: str | None = None,
+                  fallback_from: str | None = None,
                   previous: dict | None = None) -> dict:
         now = _iso(self._now())
         env = {
@@ -65,6 +66,7 @@ class Gateway:
             "last_error": last_error,
             "last_error_kind": last_error_kind,
             "fail_count": fail_count,
+            "fallback_from": fallback_from,
             "data": data,
         }
         return env
@@ -88,7 +90,7 @@ class Gateway:
             attribution=env.get("attribution") or adapter.attribution,
             simulated=False,
             configured=True,
-            fallback_from=None,
+            fallback_from=env.get("fallback_from"),
         )
 
     # -- refresh ---------------------------------------------------------
@@ -181,7 +183,8 @@ class Gateway:
                 failed_ids.append(adapter.id)
                 continue
             env = self._envelope(key, adapter, payload.observed_at, payload.data,
-                                 fail_count=failures)
+                                 fail_count=failures,
+                                 fallback_from=(failed_ids[0] if failed_ids else None))
             write_envelope(mission_id, key, env, root=self.root)
             result = self._result(key, adapter, env,
                                   derive(env, self._ttl(adapter), now=self._now()))

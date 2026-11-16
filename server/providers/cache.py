@@ -68,11 +68,13 @@ def derive(env: dict | None, ttl_s: int, *, configured: bool = True,
     reason = env.get("last_error") or None
     data = env.get("data")
 
-    if isinstance(data, dict) and "count" in data and data.get("count") == 0:
-        return Derived("empty", reason, age_s)
+    # A recorded network failure outranks a fresh-looking age: the cache is the
+    # last good copy and we have not been able to confirm it since.
     if _is_networkish(env):
         return Derived("offline", reason, age_s)
     if age_s <= ttl_s:
+        if isinstance(data, dict) and "count" in data and data.get("count") == 0:
+            return Derived("empty", reason, age_s)
         return Derived("fresh", reason, age_s)
     return Derived("stale", reason, age_s)
 

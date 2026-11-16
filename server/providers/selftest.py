@@ -771,5 +771,78 @@ def offline_weather_uses_the_committed_fixture():
     assert r.data and r.data.get("wind_speed_kmh") is not None
 
 
+@case
+def empty_past_ttl_with_a_failed_refresh_is_offline():
+    env = _env(data={"count": 0}, observed_at="2026-11-16T05:00:00Z",
+               last_error="connection reset", last_error_kind="network")
+    d = derive(env, 1200, now=_now())
+    assert d.status == "offline"
+
+
+@case
+def empty_inside_ttl_is_still_empty():
+    d = derive(_env(data={"count": 0}), 1200, now=_now())
+    assert d.status == "empty"
+
+
+@case
+def fallback_from_survives_a_warm_read():
+    import tempfile
+    from pathlib import Path
+    root = Path(tempfile.mkdtemp())
+    primary = _Spy(boom=ProviderError("missing", "adm4_unresolved"))
+    secondary = _Spy(data={"wind_speed_kmh": 12})
+    gw = _gw_from({"weather": (primary, secondary)}, root)
+    cold = gw.get("M1", "weather", _extent())
+    warm = gw.get("M1", "weather", _extent())
+    assert cold.fallback_from == "spy"
+    assert warm.fallback_from == "spy"
+
+
+@case
+def fixture_weather_reports_no_age():
+    from server.api import _weather
+    res = ProviderResult(
+        key="weather", data={"wind_speed_kmh": 10, "wind_dir_deg": 90,
+                             "temp_c": 20, "humidity_pct": 50},
+        source="fixture", source_label="Sample data", observed_at=None,
+        fetched_at=None, age_s=None, ttl_s=1200, status="error",
+        reason="fixture_fallback", error=None, licence="n/a",
+        attribution="Offline sample", simulated=True, configured=True,
+        fallback_from=None)
+    assert _weather({}, None, res)["age_min"] is None
+
+
+@case
+def payload_enqueues_refresh_for_a_stale_weather_cache():
+    import tempfile
+    from pathlib import Path
+    import server.api as api_mod
+    from server import db
+
+    root = Path(tempfile.mkdtemp())
+    mission = db.get_mission(db.init_db(), "SPIKE_BRIGHTON_ODM")
+    assert mission, "demo mission missing"
+
+    write_envelope(mission["id"], "weather", {
+        "schema": 1, "key": "weather", "provider": "open-meteo",
+        "source_label": "Open-Meteo", "licence": "x", "attribution": "y",
+        "fetched_at": "2026-01-01T00:00:00Z", "observed_at": "2026-01-01T00:00:00Z",
+        "last_attempt_at": "2026-01-01T00:00:00Z", "last_error": None,
+        "last_error_kind": None, "fail_count": 0,
+        "data": {"wind_speed_kmh": 1, "wind_dir_deg": 90,
+                 "temp_c": 20, "humidity_pct": 50},
+    }, root=root)
+
+    tasks = _Tasks()
+    original = api_mod.default_gateway
+    api_mod.default_gateway = lambda: _gw_from({"weather": (_Spy(),)}, root)
+    try:
+        api_mod._payload(mission, tasks)
+    finally:
+        api_mod.default_gateway = original
+    assert len(tasks.tasks) == 1
+
+
 if __name__ == "__main__":
     raise SystemExit(main())

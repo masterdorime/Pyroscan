@@ -94,6 +94,7 @@ def providers_summary(results: dict, ring_km: float, offline: bool) -> dict:
                 "simulated": result.simulated,
                 "reason": result.reason,
                 "configured": result.configured,
+                "fallback_from": result.fallback_from,
                 "attribution": result.attribution,
                 "licence": result.licence,
             }
@@ -152,7 +153,7 @@ def _weather(bundle: dict, hm: dict | None, result=None) -> dict:
             "status": result.status,
             "reason": result.reason,
             "fallback_from": result.fallback_from,
-            "age_min": int((result.age_s or 0) / 60),
+            "age_min": (None if result.age_s is None else int(result.age_s / 60)),
             "simulated": result.simulated,
         }
 
@@ -205,7 +206,7 @@ def _prediction(bundle: dict, weather: dict) -> dict:
             "key_events": events}
 
 
-def _payload(mission: dict) -> dict:
+def _payload(mission: dict, background=None) -> dict:
     conn = _conn()
     bundle = db.mission_bundle(conn, mission["id"])
     hm = _hm(mission)
@@ -215,13 +216,14 @@ def _payload(mission: dict) -> dict:
     extent = _provider_extent(mission)
     allow_fetch = not gw.cfg.offline
     weather_result = gw.get(mission["id"], "weather", extent,
-                            allow_fetch=allow_fetch)
+                            allow_fetch=allow_fetch, background=background)
     weather = _weather(bundle, hm, weather_result)
 
     results = {key: result for key, result in [("weather", weather_result)]}
     if "regional_fires" in gw.registry:
         results["regional_fires"] = gw.get(mission["id"], "regional_fires", extent,
-                                           allow_fetch=allow_fetch)
+                                           allow_fetch=allow_fetch,
+                                           background=background)
     fires = results.get("regional_fires")
 
     spots = []
@@ -297,19 +299,19 @@ def missions():
 
 
 @app.get("/api/v1/missions/latest")
-def latest_mission():
+def latest_mission(background: BackgroundTasks):
     m = db.latest_mission(_conn())
     if not m:
         raise HTTPException(404, "no missions")
-    return _payload(m)
+    return _payload(m, background)
 
 
 @app.get("/api/v1/missions/{mission_id}")
-def mission(mission_id: str):
+def mission(mission_id: str, background: BackgroundTasks):
     m = db.get_mission(_conn(), mission_id)
     if not m:
         raise HTTPException(404, "mission not found")
-    return _payload(m)
+    return _payload(m, background)
 
 
 @app.get("/api/v1/missions/{mission_id}/fusion")

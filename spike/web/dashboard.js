@@ -925,7 +925,7 @@ function populateRail() {
   $('#wind-arrow').style.transform = `rotate(${w.wind_dir_deg}deg)`;
   $('#w-temp').textContent = `${w.temp_c} °C`;
   $('#w-rh').textContent = `${w.humidity_pct}%`;
-  $('#w-age').textContent = `${w.age_min} min`;
+  $('#w-age').textContent = w.age_min == null ? '—' : `${w.age_min} min`;
   $('#w-source').textContent = w.source_label || w.source;
   renderWeatherNote();
   $('#basemap-note').textContent = `${f.context.source}. ${f.context.attribution}`;
