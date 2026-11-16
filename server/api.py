@@ -133,7 +133,29 @@ def _advisory(bundle: dict) -> dict | None:
     }
 
 
-def _weather(bundle: dict, hm: dict | None) -> dict:
+def _weather(bundle: dict, hm: dict | None, result=None) -> dict:
+    if result is not None and result.data:
+        data = result.data
+        return {
+            "wind_speed_kmh": data.get("wind_speed_kmh"),
+            "wind_dir_deg": data.get("wind_dir_deg"),
+            "temp_c": data.get("temp_c"),
+            "humidity_pct": data.get("humidity_pct"),
+            "precip_mm": data.get("precip_mm"),
+            "condition": data.get("condition"),
+            "adm4": data.get("adm4"),
+            "adm4_name": data.get("adm4_name"),
+            "adm4_resolved_by": data.get("adm4_resolved_by"),
+            "forecast_hours": data.get("forecast_hours"),
+            "source": result.source,
+            "source_label": result.source_label,
+            "status": result.status,
+            "reason": result.reason,
+            "fallback_from": result.fallback_from,
+            "age_min": int((result.age_s or 0) / 60),
+            "simulated": result.simulated,
+        }
+
     w = bundle.get("weather")
     if not w and hm:
         w = weather_mod.get_weather((hm["south"] + hm["north"]) / 2,
@@ -146,15 +168,15 @@ def _weather(bundle: dict, hm: dict | None) -> dict:
         "temp_c": w.get("temperature_c"),
         "humidity_pct": w.get("humidity_pct"),
         "source": source,
+        "source_label": source,
         "age_min": _age(w.get("observed_at")),
         "simulated": "fixture" in source.lower(),
     }
 
 
-def _prediction(bundle: dict) -> dict:
+def _prediction(bundle: dict, weather: dict) -> dict:
     preds = bundle.get("predictions") or []
-    w = bundle.get("weather") or {}
-    wind_to = ((float(w.get("wind_dir_deg") or 0)) + 180.0) % 360.0
+    wind_to = ((float(weather.get("wind_dir_deg") or 0)) + 180.0) % 360.0
     rate60 = max((p.get("rate_m_min") or 0 for p in preds if p.get("horizon_min") == 60), default=0)
     area60 = round(0.71 + rate60 * 0.09, 2)
     area30 = round(0.71 + rate60 * 0.045, 2)
@@ -188,6 +210,20 @@ def _payload(mission: dict) -> dict:
     bundle = db.mission_bundle(conn, mission["id"])
     hm = _hm(mission)
     ortho_path = _path(mission.get("ortho_path"))
+
+    gw = default_gateway()
+    extent = _provider_extent(mission)
+    allow_fetch = not gw.cfg.offline
+    weather_result = gw.get(mission["id"], "weather", extent,
+                            allow_fetch=allow_fetch)
+    weather = _weather(bundle, hm, weather_result)
+
+    results = {key: result for key, result in [("weather", weather_result)]}
+    if "regional_fires" in gw.registry:
+        results["regional_fires"] = gw.get(mission["id"], "regional_fires", extent,
+                                           allow_fetch=allow_fetch)
+    fires = results.get("regional_fires")
+
     spots = []
     for s in bundle["hotspots"]:
         u, v = _uv(hm, s["lat"], s["lon"])
@@ -215,10 +251,13 @@ def _payload(mission: dict) -> dict:
             "stages": config.STAGES,
         },
         "context": config.CONTEXT,
-        "weather": _weather(bundle, hm),
+        "weather": weather,
+        "providers": providers_summary(results, extent.ring_km, gw.cfg.offline),
+        "regional_fires": fires.data if fires and fires.data else None,
+        "places": None,
         "advisory": _advisory(bundle),
         "hotspots": spots,
-        "prediction": _prediction(bundle),
+        "prediction": _prediction(bundle, weather),
         "flight_path": config.FLIGHT_PATH,
         "assets": {
             "heightmap": f"/api/v1/missions/{mission['id']}/heightmap"

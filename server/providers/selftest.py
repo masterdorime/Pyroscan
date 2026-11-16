@@ -673,5 +673,32 @@ def unconfigured_reported_even_when_fetch_disallowed():
     assert r.status == "unconfigured"
 
 
+@case
+def prediction_uses_passed_weather_not_db_row():
+    from server.api import _prediction
+    bundle = {"weather": {"wind_dir_deg": 0}, "predictions": [],
+              "mission": {"id": "T1", "started_at": "2026-11-16T08:00:00Z",
+                          "ended_at": "2026-11-16T08:30:00Z"}}
+    out = _prediction(bundle, {"wind_dir_deg": 90.0})
+    assert abs(out["wind_to_deg"] - 270.0) < 0.01
+
+
+@case
+def weather_payload_maps_gateway_result():
+    from server.api import _weather
+    res = ProviderResult(
+        key="weather", data={"wind_speed_kmh": 11.5, "wind_dir_deg": 145,
+                             "temp_c": 31.0, "humidity_pct": 68},
+        source="bmkg", source_label="BMKG",
+        observed_at="2026-11-16T06:00:00Z", fetched_at="2026-11-16T06:00:05Z",
+        age_s=300, ttl_s=1200, status="fresh", reason=None, error=None,
+        licence="BMKG public", attribution="BMKG", simulated=False,
+        configured=True, fallback_from=None)
+    out = _weather({}, None, res)
+    assert out["temp_c"] == 31.0 and out["wind_dir_deg"] == 145
+    assert out["source"] == "bmkg" and out["simulated"] is False
+    assert out["age_min"] == 5
+
+
 if __name__ == "__main__":
     raise SystemExit(main())
