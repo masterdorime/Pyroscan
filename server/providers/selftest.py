@@ -3,10 +3,11 @@ from __future__ import annotations
 
 import sys
 import traceback
+from datetime import datetime, timezone
 
 from .base import (Extent, ProviderConfig, ProviderError, ProviderPayload,
                    ProviderResult)
-from .cache import mission_dir, read_envelope, write_envelope
+from .cache import derive, mission_dir, read_envelope, write_envelope
 from .config import load, redact
 from .geo import bearing_deg, haversine_km, mission_extent
 
@@ -140,6 +141,56 @@ def cache_preserves_non_ascii():
     assert back["data"] == data
     raw = (root / "M1" / "weather.envelope.json").read_text(encoding="utf-8")
     assert "Cerah Berawan" in raw
+
+
+def _env(**kw):
+    base = {"observed_at": "2026-11-16T06:00:00Z", "fetched_at": "2026-11-16T06:00:05Z",
+            "last_error": None, "fail_count": 0, "data": {"count": 3}}
+    base.update(kw)
+    return base
+
+
+def _now():
+    return datetime(2026, 11, 16, 6, 10, tzinfo=timezone.utc)
+
+
+@case
+def status_matrix():
+    now = _now()
+    assert derive(None, 1200, now=now).status == "error"
+    assert derive(None, 1200, now=now).reason == "never_fetched"
+    assert derive(None, 1200, configured=False, now=now).status == "unconfigured"
+    assert derive(_env(), 1200, now=now).status == "fresh"
+    assert derive(_env(observed_at="2026-11-16T05:20:00Z"), 1200, now=now).status == "stale"
+    assert derive(_env(data={"count": 0}), 1200, now=now).status == "empty"
+    assert derive(_env(last_error="connection reset"), 1200, now=now).status == "offline"
+    assert derive(None, 1200, now=now).status == "error"
+
+
+@case
+def status_future_timestamp_is_not_fresh_forever():
+    now = datetime(2026, 11, 16, 6, 10, tzinfo=timezone.utc)
+    d = derive(_env(observed_at="2026-11-16T09:00:00Z"), 1200, now=now)
+    assert d.age_s == 0
+    assert d.status == "fresh"
+
+
+@case
+def status_unknown_age_is_stale():
+    now = _now()
+    d = derive(_env(observed_at=None, fetched_at=None), 1200, now=now)
+    assert d.age_s is None
+    assert d.status == "stale"
+    assert d.reason == "unknown_age"
+
+
+@case
+def status_reason_independent_of_status():
+    now = _now()
+    d = derive(_env(observed_at="2026-11-16T05:20:00Z", last_error="no_usable_scene"),
+               1200, now=now)
+    assert d.status == "stale"
+    assert d.reason == "no_usable_scene"
 
 
 if __name__ == "__main__":

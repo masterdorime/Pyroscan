@@ -7,11 +7,72 @@ from __future__ import annotations
 import json
 import os
 import re
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
 from .. import config as server_config
 
 KEY_SAFE = re.compile(r"^[A-Za-z0-9_-]+$")
+
+_NETWORK_WORDS = ("network", "connection", "timeout", "timed out", "reset",
+                  "unreachable", "dns", "refused", "http")
+
+
+@dataclass(frozen=True)
+class Derived:
+    """A status computed at read time. Never persisted."""
+    status: str
+    reason: str | None
+    age_s: int | None
+
+
+def _parse_ts(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+def _is_networkish(env: dict) -> bool:
+    if env.get("last_error_kind") in ("network", "http"):
+        return True
+    message = str(env.get("last_error") or "").lower()
+    return any(word in message for word in _NETWORK_WORDS)
+
+
+def derive(env: dict | None, ttl_s: int, *, configured: bool = True,
+           now: datetime | None = None) -> Derived:
+    """Spec §7.3: status describes the cache the client received.
+
+    `reason` describes the latest fetch outcome and is independent of `status`.
+    An unknown age is never reported as fresh, and a future timestamp is
+    clamped to age 0 rather than producing a negative age.
+    """
+    if not configured:
+        return Derived("unconfigured", "not_configured", None)
+    if env is None:
+        return Derived("error", "never_fetched", None)
+
+    moment = now or datetime.now(timezone.utc)
+    reference = _parse_ts(env.get("observed_at")) or _parse_ts(env.get("fetched_at"))
+    if reference is None:
+        return Derived("stale", "unknown_age", None)
+
+    age_s = max(0, int((moment - reference).total_seconds()))
+    reason = env.get("last_error") or None
+    data = env.get("data")
+
+    if isinstance(data, dict) and "count" in data and data.get("count") == 0:
+        return Derived("empty", reason, age_s)
+    if _is_networkish(env):
+        return Derived("offline", reason, age_s)
+    if age_s <= ttl_s:
+        return Derived("fresh", reason, age_s)
+    return Derived("stale", reason, age_s)
 
 
 def _safe(value: str, label: str) -> str:
