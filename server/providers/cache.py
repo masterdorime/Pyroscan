@@ -14,6 +14,7 @@ from pathlib import Path
 from .. import config as server_config
 
 KEY_SAFE = re.compile(r"^[A-Za-z0-9_-]+$")
+ASSET_SAFE = re.compile(r"^[A-Za-z0-9_.-]+$")
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
@@ -85,6 +86,14 @@ def _safe(value: str, label: str) -> str:
     return value
 
 
+def _safe_asset(name: str) -> str:
+    """Assets carry an extension (context_dem.json), so dots are allowed."""
+    if (not isinstance(name, str) or not ASSET_SAFE.match(name)
+            or name in (".", "..") or ".." in name):
+        raise ValueError(f"unsafe asset name: {name!r}")
+    return name
+
+
 def mission_dir(mission_id: str, root: Path | None = None) -> Path:
     """Cache directory for one mission. Rejects path traversal."""
     return Path(root or server_config.PROVIDERS_CACHE) / _safe(mission_id, "mission id")
@@ -124,5 +133,5 @@ def read_envelope(mission_id: str, key: str,
 def write_asset(mission_id: str, name: str, data: bytes,
                 root: Path | None = None) -> Path:
     """Store a binary sidecar (imagery, DEM) next to the envelopes."""
-    target = mission_dir(mission_id, root) / _safe(name, "asset name")
+    target = mission_dir(mission_id, root) / _safe_asset(name)
     return _atomic_write(target, data)

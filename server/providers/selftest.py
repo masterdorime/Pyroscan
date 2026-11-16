@@ -9,7 +9,8 @@ from .adm4 import resolve
 from .base import (Extent, ProviderConfig, ProviderError, ProviderPayload,
                    ProviderResult)
 from .bmkg import BmkgProvider
-from .cache import derive, mission_dir, read_envelope, write_envelope
+from .cache import (derive, mission_dir, read_envelope, write_asset,
+                    write_envelope)
 from .config import load, redact
 from .firms import FirmsProvider
 from .geo import bearing_deg, haversine_km, mission_extent
@@ -842,6 +843,21 @@ def payload_enqueues_refresh_for_a_stale_weather_cache():
     finally:
         api_mod.default_gateway = original
     assert len(tasks.tasks) == 1
+
+
+@case
+def cache_accepts_dotted_asset_names():
+    import tempfile
+    from pathlib import Path
+    root = Path(tempfile.mkdtemp())
+    p = write_asset("M1", "context_dem.json", b"{}", root=root)
+    assert p.name == "context_dem.json" and p.exists()
+    for bad in ("../x", "a/b", "..", "."):
+        try:
+            write_asset("M1", bad, b"{}", root=root)
+        except ValueError:
+            continue
+        raise AssertionError(f"accepted asset name {bad!r}")
 
 
 if __name__ == "__main__":
