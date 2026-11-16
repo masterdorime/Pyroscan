@@ -33,3 +33,4 @@ spike/shots/*
 server/*.db-shm
 server/*.db-wal
 !.env.example
+!spike/shots/phase1-*.png
