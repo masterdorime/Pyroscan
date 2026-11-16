@@ -1101,5 +1101,44 @@ def dem_module_requires_rasterio_at_import():
             setattr(pkg, "copernicus_dem", saved_module)
 
 
+@case
+def firms_falls_back_when_the_first_sensor_is_empty():
+    from server.providers import firms
+    empty = _FIRMS_HEADER + "\n"
+    real = _firms_csv([_row(-6.9, 107.6, "2026-11-16", "0420")])
+    seen = []
+
+    def fetch_text(url, **kwargs):
+        seen.append(url)
+        return empty if "VIIRS_SNPP_NRT" in url else real
+
+    prov = FirmsProvider(fetch_text=fetch_text)
+    payload = prov.fetch(_extent(), _cfg_with_key())
+    assert payload.data["count"] == 1
+    assert len(seen) == 2
+    assert any("MODIS_NRT" in s for s in seen)
+
+
+@case
+def firms_stops_at_the_first_sensor_with_rows():
+    from server.providers import firms
+    real = _firms_csv([_row(-6.9, 107.6, "2026-11-16", "0420")])
+    seen = []
+
+    def fetch_text(url, **kwargs):
+        seen.append(url)
+        return real
+
+    prov = FirmsProvider(fetch_text=fetch_text)
+    payload = prov.fetch(_extent(), _cfg_with_key())
+    assert payload.data["count"] == 1
+    assert len(seen) == 1
+
+
+def _cfg_with_key():
+    return ProviderConfig(firms_map_key="test-key", bmkg_adm4=None,
+                          ring_km=15.0, offline=False, ttl_overrides={})
+
+
 if __name__ == "__main__":
     raise SystemExit(main())

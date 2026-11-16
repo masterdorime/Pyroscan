@@ -35,3 +35,4 @@ server/*.db-wal
 !.env.example
 !spike/shots/phase1-*.png
 !spike/shots/phase2-*.png
+!spike/shots/phase2-*.png

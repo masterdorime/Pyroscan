@@ -13,6 +13,7 @@ from .base import Extent, ProviderConfig, ProviderError, ProviderPayload
 
 URL = "https://firms.modaps.eosdis.nasa.gov/api/area/csv/{key}/{source}/{box}/{days}"
 SOURCE = "VIIRS_SNPP_NRT"
+SOURCES = ("VIIRS_SNPP_NRT", "MODIS_NRT")
 WINDOW_DAYS = 1
 CAP = 500
 
@@ -125,12 +126,25 @@ class FirmsProvider:
     allow_inline = True
     requires: tuple[str, ...] = ("firms_map_key",)
 
+    def __init__(self, *, fetch_text=None) -> None:
+        self.fetch_text = fetch_text or http.get_text
+
     def fetch(self, extent: Extent, cfg: ProviderConfig) -> ProviderPayload:
         if not cfg.firms_map_key:
             raise ProviderError("config", "firms_map_key_missing")
         box = f"{extent.west:.4f},{extent.south:.4f},{extent.east:.4f},{extent.north:.4f}"
-        url = URL.format(key=cfg.firms_map_key, source=SOURCE, box=box,
-                         days=WINDOW_DAYS)
-        text = http.get_text(url, timeout=self.fetch_timeout_s,
-                             secret=cfg.firms_map_key)
-        return parse(text, extent.centre)
+        first_empty = None
+        for source in SOURCES:
+            url = URL.format(key=cfg.firms_map_key, source=source, box=box,
+                             days=WINDOW_DAYS)
+            text = self.fetch_text(url, timeout=self.fetch_timeout_s,
+                                   secret=cfg.firms_map_key)
+            payload = parse(text, extent.centre)
+            payload.data["sensors"] = [source]
+            if payload.data["count"]:
+                return payload
+            if first_empty is None:
+                first_empty = payload
+        if first_empty is not None:
+            first_empty.data["sensors"] = list(SOURCES)
+        return first_empty or ProviderPayload({"count": 0}, None)

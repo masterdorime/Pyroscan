@@ -12,13 +12,19 @@ spec disagrees with the capture, the capture wins.
 |---|---|---|
 | `open_meteo/live.json` | Open-Meteo `v1/forecast` | 2026-11-16 |
 | `bmkg/live.json` | BMKG `publik/prakiraan-cuaca`, adm4 `31.71.01.1001` | 2026-11-16 |
-| `firms/live.csv` | **synthetic** — hand-authored, no `MAP_KEY` available | — |
+| `firms/live.csv` | NASA FIRMS area CSV, **MODIS_NRT**, box `95,-11,141,6`, 1 day | 2026-11-16 |
+| `firms/empty.csv` | NASA FIRMS area CSV, **VIIRS_SNPP_NRT**, same box | 2026-11-16 |
 
 Fill the "Captured" column when you record one. If a capture could not be made
 (no key, no network), say so here and mark the file **synthetic** rather than
-leaving the reader to guess. `firms/live.csv` is synthetic: its columns and row
-shape follow the published FIRMS area-CSV header, but the values are invented.
-Replace it with a real extract as soon as a key exists.
+leaving the reader to guess.
+
+**Why two FIRMS files.** On 2026-11-16 `VIIRS_SNPP_NRT` returned a header-only
+CSV for every box tried — Indonesia included — while `MODIS_NRT` returned 36
+detections for the same area. `live.csv` is the MODIS capture, so the parser is
+tested against real numeric confidence and the `brightness` column. `empty.csv`
+is the real empty VIIRS response and is the fixture for the zero-detection
+path. The adapter therefore tries multiple sensors rather than trusting one.
 
 ## `<key>/fallback.json` — the offline safety net
 
