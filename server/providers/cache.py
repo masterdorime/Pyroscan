@@ -15,6 +15,8 @@ from .. import config as server_config
 
 KEY_SAFE = re.compile(r"^[A-Za-z0-9_-]+$")
 
+FIXTURES = Path(__file__).resolve().parent / "fixtures"
+
 _NETWORK_WORDS = ("network", "connection", "timeout", "timed out", "reset",
                   "unreachable", "dns", "refused", "http")
 

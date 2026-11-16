@@ -1,0 +1,11 @@
+{
+  "count": 0,
+  "bbox": null,
+  "window_days": 1,
+  "sensors": [],
+  "detections": [],
+  "nearest_km": null,
+  "nearest_bearing_deg": null,
+  "newest_age_s": null,
+  "truncated": false
+}

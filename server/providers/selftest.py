@@ -350,5 +350,74 @@ def gateway_cold_heavy_returns_warming():
     assert len(tasks.tasks) == 1
 
 
+@case
+def chain_falls_through_when_primary_unavailable():
+    import tempfile
+    from pathlib import Path
+    root = Path(tempfile.mkdtemp())
+    bmkg = _Spy(boom=ProviderError("missing", "adm4_unresolved"))
+    om = _Spy(data={"wind_speed_kmh": 12})
+    gw = _gw_from({"weather": (bmkg, om)}, root)
+    r = gw.get("M1", "weather", _extent())
+    assert r.source == "spy" and r.data["wind_speed_kmh"] == 12
+    assert r.fallback_from == bmkg.id
+
+
+@case
+def chain_records_failed_attempt():
+    import tempfile
+    from pathlib import Path
+    root = Path(tempfile.mkdtemp())
+    bmkg = _Spy(boom=ProviderError("network", "reset"))
+    om = _Spy(data={"wind_speed_kmh": 9})
+    gw = _gw_from({"weather": (bmkg, om)}, root)
+    gw.get("M1", "weather", _extent())
+    env = read_envelope("M1", "weather", root=root)
+    assert env["fail_count"] == 1
+
+
+@case
+def chain_stale_primary_does_not_fall_through():
+    import tempfile
+    from pathlib import Path
+    root = Path(tempfile.mkdtemp())
+    bmkg = _Spy(observed="2026-11-16T05:00:00Z", data={"wind_speed_kmh": 3})
+    om = _Spy(data={"wind_speed_kmh": 99})
+    gw = _gw_from({"weather": (bmkg, om)}, root)
+    gw.refresh_now("M1", "weather", _extent())
+    r = gw.get("M1", "weather", _extent())
+    assert r.status == "stale" and r.data["wind_speed_kmh"] == 3 and om.calls == 0
+
+
+@case
+def fixture_fallback_is_simulated_and_not_cached():
+    import tempfile
+    from pathlib import Path
+    root = Path(tempfile.mkdtemp())
+    spy = _Spy(key="regional_fires", boom=ProviderError("network", "reset"))
+    gw = _gw(spy, root)
+    r = gw.get("M1", "regional_fires", _extent())
+    assert r.status == "error" and r.simulated is True
+    assert r.reason == "fixture_fallback"
+    assert read_envelope("M1", "regional_fires", root=root) is None
+    gw.get("M1", "regional_fires", _extent())
+    assert spy.calls == 2
+
+
+@case
+def unconfigured_beats_fixture_fallback():
+    import tempfile
+    from pathlib import Path
+    root = Path(tempfile.mkdtemp())
+    spy = _Spy(key="regional_fires")
+    spy.requires = ("firms_map_key",)
+    gw = _gw(spy, root)
+    r = gw.get("M1", "regional_fires", _extent())
+    assert r.status == "unconfigured"
+    assert r.configured is False and r.simulated is False
+    assert spy.calls == 0
+    assert read_envelope("M1", "regional_fires", root=root) is None
+
+
 if __name__ == "__main__":
     raise SystemExit(main())

@@ -92,22 +92,104 @@ class Gateway:
         )
 
     # -- refresh ---------------------------------------------------------
-    def _do_refresh(self, mission_id: str, key: str, extent: Extent) -> ProviderResult:
-        adapter = self.registry[key][0]
-        previous = read_envelope(mission_id, key, root=self.root)
-        try:
-            payload = adapter.fetch(extent, self.cfg)
-        except ProviderError as exc:
-            fail_count = int((previous or {}).get("fail_count") or 0) + 1
-            env = self._envelope(key, adapter, None, (previous or {}).get("data") or {},
-                                 fail_count=fail_count, last_error=exc.detail,
-                                 last_error_kind=exc.kind, previous=previous)
-            write_envelope(mission_id, key, env, root=self.root)
-            return self._result(key, adapter, env, derive(env, self._ttl(adapter), now=self._now()))
+    def _configured(self, adapter: Provider) -> bool:
+        return all(getattr(self.cfg, req, None) for req in adapter.requires)
 
-        env = self._envelope(key, adapter, payload.observed_at, payload.data)
-        write_envelope(mission_id, key, env, root=self.root)
-        return self._result(key, adapter, env, derive(env, self._ttl(adapter), now=self._now()))
+    def _missing_requirement(self, adapter: Provider) -> str:
+        for req in adapter.requires:
+            if not getattr(self.cfg, req, None):
+                return f"{req}_missing"
+        return "not_configured"
+
+    def _unconfigured(self, key: str, adapter: Provider) -> ProviderResult:
+        return ProviderResult(
+            key=key, data=None, source=adapter.id,
+            source_label=adapter.source_label, observed_at=None, fetched_at=None,
+            age_s=None, ttl_s=self._ttl(adapter), status="unconfigured",
+            reason=self._missing_requirement(adapter), error=None,
+            licence=adapter.licence, attribution=adapter.attribution,
+            simulated=False, configured=False, fallback_from=None,
+        )
+
+    def _fixture(self, key: str) -> dict | None:
+        path = cache.FIXTURES / key / "fallback.json"
+        try:
+            import json
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        return payload if isinstance(payload, dict) else None
+
+    def _fixture_result(self, key: str, adapter: Provider) -> ProviderResult:
+        return ProviderResult(
+            key=key, data=self._fixture(key), source="fixture",
+            source_label=adapter.source_label, observed_at=None, fetched_at=None,
+            age_s=None, ttl_s=self._ttl(adapter), status="error",
+            reason="fixture_fallback", error=None, licence=adapter.licence,
+            attribution=adapter.attribution, simulated=True, configured=True,
+            fallback_from=None,
+        )
+
+    def _do_refresh(self, mission_id: str, key: str, extent: Extent) -> ProviderResult:
+        chain = self.registry[key]
+        previous = read_envelope(mission_id, key, root=self.root)
+        failures = 0
+        attempted = 0
+        last_error: ProviderError | None = None
+        failed_ids: list[str] = []
+
+        for adapter in chain:
+            if not self._configured(adapter):
+                continue
+            attempted += 1
+            try:
+                payload = adapter.fetch(extent, self.cfg)
+            except ProviderError as exc:
+                failures += 1
+                last_error = exc
+                failed_ids.append(adapter.id)
+                continue
+            env = self._envelope(key, adapter, payload.observed_at, payload.data,
+                                 fail_count=failures)
+            write_envelope(mission_id, key, env, root=self.root)
+            result = self._result(key, adapter, env,
+                                  derive(env, self._ttl(adapter), now=self._now()))
+            if failures and failed_ids:
+                result.fallback_from = failed_ids[0]
+            return result
+
+        primary = chain[0]
+        if attempted == 0:
+            return self._unconfigured(key, primary)
+
+        # Every attempt failed. Keep the last good data and mark it offline, but
+        # only when there is something to mark: with no cache we must not write a
+        # file, or the fixture result would be cached as if it were provider data.
+        if previous is not None:
+            env = self._envelope(key, primary, None,
+                                 previous.get("data") or {},
+                                 fail_count=int(previous.get("fail_count") or 0) + 1,
+                                 last_error=(last_error.detail if last_error else "unknown"),
+                                 last_error_kind=(last_error.kind if last_error else None),
+                                 previous=previous)
+            write_envelope(mission_id, key, env, root=self.root)
+            result = self._result(key, primary, env,
+                                  derive(env, self._ttl(primary), now=self._now()))
+            result.fallback_from = failed_ids[0] if len(failed_ids) > 1 else None
+            return result
+
+        if self._fixture(key) is not None:
+            return self._fixture_result(key, primary)
+
+        return ProviderResult(
+            key=key, data=None, source=primary.id,
+            source_label=primary.source_label, observed_at=None, fetched_at=None,
+            age_s=None, ttl_s=self._ttl(primary), status="error",
+            reason=(last_error.detail if last_error else "never_fetched"),
+            error=(last_error.detail if last_error else None),
+            licence=primary.licence, attribution=primary.attribution,
+            simulated=False, configured=True, fallback_from=None,
+        )
 
     def refresh_now(self, mission_id: str, key: str, extent: Extent) -> ProviderResult:
         pair = (mission_id, key)
