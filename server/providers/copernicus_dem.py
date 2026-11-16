@@ -10,7 +10,9 @@ from __future__ import annotations
 import math
 from pathlib import Path
 
-from .base import Extent
+import requests
+
+from .base import Extent, ProviderError
 
 BASE_URL = "https://copernicus-dem-30m.s3.amazonaws.com"
 SOURCE_RESOLUTION_M = 30
@@ -41,3 +43,33 @@ def cell_bounds(name: str) -> tuple[float, float, float, float]:
     except (IndexError, ValueError):
         raise ValueError(f"not a Copernicus tile name: {name!r}") from None
     return float(west), float(south), float(west + 1), float(south + 1)
+
+
+def fetch_tile(name: str, dest: Path, *, timeout: int = 45,
+               max_bytes: int = TILE_MAX_BYTES, getter=None) -> Path:
+    """Stream one tile to `dest`, refusing short reads and oversized objects."""
+    caller = getter or requests.get
+    try:
+        resp = caller(tile_url(name), stream=True, timeout=timeout)
+    except requests.RequestException as exc:
+        raise ProviderError("network", f"{type(exc).__name__}: {exc}") from None
+    if resp.status_code >= 400:
+        raise ProviderError("http", f"HTTP {resp.status_code} for {name}")
+
+    expected = resp.headers.get("Content-Length")
+    written = 0
+    dest = Path(dest)
+    try:
+        with open(dest, "wb") as handle:
+            for chunk in resp.iter_content(1 << 20):
+                written += len(chunk)
+                if written > max_bytes:
+                    raise ProviderError("http", f"tile exceeds {max_bytes} bytes")
+                handle.write(chunk)
+        if expected is not None and int(expected) != written:
+            raise ProviderError("network",
+                                f"short read: {written} of {expected} bytes")
+    except BaseException:
+        dest.unlink(missing_ok=True)
+        raise
+    return dest

@@ -888,5 +888,56 @@ def dem_tile_url_is_keyless():
     assert "?" not in url and "key" not in url.lower()
 
 
+class _StreamResp:
+    def __init__(self, chunks, length=None, status=200):
+        self._chunks = chunks
+        self.status_code = status
+        self.headers = {} if length is None else {"Content-Length": str(length)}
+
+    def iter_content(self, size):
+        yield from self._chunks
+
+
+@case
+def dem_fetch_rejects_truncated_tile():
+    import tempfile
+    from pathlib import Path
+    from server.providers.copernicus_dem import fetch_tile
+    dest = Path(tempfile.mkdtemp()) / "tile.tif"
+    try:
+        fetch_tile("X", dest, getter=lambda *a, **k: _StreamResp([b"abc"], length=100))
+    except ProviderError as e:
+        assert e.kind == "network"
+        assert not dest.exists()
+        return
+    raise AssertionError("accepted a short read")
+
+
+@case
+def dem_fetch_enforces_byte_cap():
+    import tempfile
+    from pathlib import Path
+    from server.providers.copernicus_dem import fetch_tile
+    dest = Path(tempfile.mkdtemp()) / "tile.tif"
+    big = [b"x" * 1024] * 100
+    try:
+        fetch_tile("X", dest, max_bytes=4096, getter=lambda *a, **k: _StreamResp(big))
+    except ProviderError as e:
+        assert e.kind == "http"
+        assert not dest.exists()
+        return
+    raise AssertionError("exceeded the cap without raising")
+
+
+@case
+def dem_fetch_writes_complete_tile():
+    import tempfile
+    from pathlib import Path
+    from server.providers.copernicus_dem import fetch_tile
+    dest = Path(tempfile.mkdtemp()) / "tile.tif"
+    out = fetch_tile("X", dest, getter=lambda *a, **k: _StreamResp([b"ab", b"cd"], length=4))
+    assert out.exists() and out.read_bytes() == b"abcd"
+
+
 if __name__ == "__main__":
     raise SystemExit(main())
