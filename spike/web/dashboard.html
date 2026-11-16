@@ -88,6 +88,15 @@
         <div class="legend-attrib" id="attrib">Imagery © Esri</div>
       </div>
 
+      <div id="fires-inset" hidden>
+        <div class="fi-head">
+          <span id="fi-title">NASA FIRMS · NRT</span>
+          <span class="fi-count" id="fi-count"></span>
+        </div>
+        <div class="fi-sub" id="fi-sub"></div>
+        <ol class="fi-rows" id="fi-rows"></ol>
+      </div>
+
       <div id="minimap" title="Fit mission">
         <img src="data/context_near.jpg" alt="Mission context" />
         <div id="minimap-box"></div>
@@ -230,7 +239,7 @@
 
         <section id="tab-weather" class="tab">
           <div class="card">
-            <div class="card-head"><h3>Wind &amp; fire behavior</h3><span class="tag warn">SIMULASI</span></div>
+            <div class="card-head"><h3>Wind &amp; fire behavior</h3><span class="tag warn" id="w-flag">SIMULASI</span></div>
             <div class="wind-big">
               <div class="wind-arrow" id="wind-arrow"><svg viewBox="0 0 34 34" width="34" height="34"><line x1="17" y1="31" x2="17" y2="7" stroke="currentColor" stroke-width="2"/><polygon points="17,2 11,11 23,11" fill="currentColor"/></svg></div>
               <div>
@@ -244,6 +253,7 @@
               <div><dt>Data age</dt><dd id="w-age">—</dd></div>
               <div><dt>Source</dt><dd id="w-source">—</dd></div>
             </dl>
+            <p class="small w-note" id="w-note"></p>
           </div>
           <div class="card">
             <div class="card-head"><h3>Basemap</h3></div>

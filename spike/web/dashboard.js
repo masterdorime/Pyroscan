@@ -96,6 +96,7 @@ function fail(e) {
   wireSceneClicks();
   populateRail();
   renderProviders();
+  renderFiresInset();
   wireUI();
   wireTheme();
   renderCharts();
@@ -488,6 +489,7 @@ function setMode(mode) {
   if (state.groups.footprint) state.groups.footprint.show = ctx;
   applySceneTheme();
   renderLegend();
+  renderFiresInset();
 }
 
 /* ---------------- wind ---------------- */
@@ -744,6 +746,127 @@ function renderProviders() {
   $('#ld-attrib').textContent = [...attributions].join(' · ');
 }
 
+/* ---------------- weather source line ---------------- */
+function renderWeatherNote() {
+  const w = state.f && state.f.weather;
+  const item = state.f && state.f.providers && state.f.providers.items.weather;
+  const flag = $('#w-flag');
+  const note = $('#w-note');
+  if (!note) return;
+
+  const simulated = item ? item.simulated : Boolean(w && w.simulated);
+  if (flag) flag.hidden = !simulated;
+
+  const mins = item && item.age_s != null ? Math.round(item.age_s / 60) : null;
+  let line = '';
+  if (item && (item.reason === 'adm4_unresolved' || item.fallback_from === 'bmkg')) {
+    line = 'BMKG code unresolved for this location — using Open-Meteo';
+  } else if (w && w.source === 'bmkg' && w.forecast_hours != null) {
+    line = `BMKG · forecast ${w.forecast_hours} h ahead`;
+  } else if (item && item.status === 'offline') {
+    line = `${item.source_label} · offline — cached reading`;
+  } else if (item && item.status === 'stale' && mins != null) {
+    line = `${item.source_label} · wind data ${mins} min old`;
+  } else if (item && mins != null) {
+    line = `${item.source_label} · observed ${mins} min ago`;
+  }
+  if (simulated) line += `${line ? ' · ' : ''}sample data`;
+
+  note.textContent = line;
+  note.className = 'small w-note'
+    + (item && item.status === 'stale' ? ' warn' : '')
+    + (simulated ? ' muted' : '');
+}
+
+/* ---------------- regional fires inset ---------------- */
+const COMPASS = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE',
+  'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
+
+const compassOf = (deg) => COMPASS[Math.round((deg || 0) / 22.5) % 16];
+
+function distanceKm(lat1, lon1, lat2, lon2) {
+  const R = 6371.0088;
+  const p1 = rad(lat1), p2 = rad(lat2);
+  const dp = p2 - p1, dl = rad(lon2 - lon1);
+  const a = Math.sin(dp / 2) ** 2 + Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(Math.min(1, a)));
+}
+
+function bearingOf(lat1, lon1, lat2, lon2) {
+  const p1 = rad(lat1), p2 = rad(lat2);
+  const dl = rad(lon2 - lon1);
+  const y = Math.sin(dl) * Math.cos(p2);
+  const x = Math.cos(p1) * Math.sin(p2) - Math.sin(p1) * Math.cos(p2) * Math.cos(dl);
+  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+}
+
+function focusPoint(lon, lat) {
+  const height = (state.center && state.center.height) || 0;
+  const target = C.Cartesian3.fromDegrees(lon, lat, height);
+  state.viewer.camera.lookAt(target, new C.HeadingPitchRange(
+    rad(CONTEXT_CAMERA.heading), rad(CONTEXT_CAMERA.pitch), CONTEXT_CAMERA.range));
+  state.viewer.camera.lookAtTransform(C.Matrix4.IDENTITY);
+}
+
+function renderFiresInset() {
+  const inset = $('#fires-inset');
+  if (!inset) return;
+  const item = state.f && state.f.providers && state.f.providers.items.regional_fires;
+  inset.hidden = !(state.mode === 'context' && item);
+  if (inset.hidden) return;
+
+  const fires = state.f.regional_fires;
+  const title = $('#fi-title');
+  const count = $('#fi-count');
+  const sub = $('#fi-sub');
+  const rows = $('#fi-rows');
+  title.textContent = `NASA FIRMS · NRT${item.simulated ? ' · SIMULASI' : ''}`;
+
+  if (item.status === 'unconfigured') {
+    count.textContent = '';
+    sub.textContent = 'add MAP_KEY to enable';
+    rows.innerHTML = '';
+    return;
+  }
+  if (!fires) {
+    count.textContent = '';
+    sub.textContent = item.status === 'unavailable' ? 'fetching…' : 'no data yet';
+    rows.innerHTML = '';
+    return;
+  }
+
+  count.textContent = fires.count;
+  if (!fires.count) {
+    sub.textContent = `No detections in the last ${fires.window_days * 24} h`;
+    rows.innerHTML = '';
+    return;
+  }
+
+  const centre = state.center || { lon: 0, lat: 0 };
+  const newest = fires.detections[0];
+  const newestMin = newest
+    ? Math.max(0, Math.round((Date.now() - new Date(newest.acq_at).getTime()) / 60000))
+    : 0;
+  sub.textContent = `nearest ${fires.nearest_km} km · `
+    + `${compassOf(fires.nearest_bearing_deg)} · ${newestMin} min`;
+
+  rows.innerHTML = fires.detections.slice(0, 5).map((d) => {
+    const km = distanceKm(centre.lat, centre.lon, d.lat, d.lon).toFixed(1);
+    const bearing = compassOf(bearingOf(centre.lat, centre.lon, d.lat, d.lon));
+    const conf = Math.round((d.confidence || 0) * 100);
+    return `<li data-lon="${d.lon}" data-lat="${d.lat}">`
+      + `<span>${km} km ${bearing}</span>`
+      + `<span>${conf}% · ${d.acq_at.slice(11, 16)}Z</span>`
+      + `</li>`;
+  }).join('');
+
+  rows.querySelectorAll('li').forEach((li) => {
+    li.addEventListener('click', () => {
+      focusPoint(Number(li.dataset.lon), Number(li.dataset.lat));
+    });
+  });
+}
+
 function populateRail() {
   const f = state.f;
   const c = f.context;
@@ -799,7 +922,8 @@ function populateRail() {
   $('#w-temp').textContent = `${w.temp_c} °C`;
   $('#w-rh').textContent = `${w.humidity_pct}%`;
   $('#w-age').textContent = `${w.age_min} min`;
-  $('#w-source').textContent = w.source;
+  $('#w-source').textContent = w.source_label || w.source;
+  renderWeatherNote();
   $('#basemap-note').textContent = `${f.context.source}. ${f.context.attribution}`;
   $('#attrib').textContent = f.context.attribution;
 
