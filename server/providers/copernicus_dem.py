@@ -8,8 +8,11 @@ containing its centre; crossing a cell boundary clips and is flagged.
 from __future__ import annotations
 
 import math
+import time
 from pathlib import Path
 
+import numpy as np
+import rasterio
 import requests
 
 from .base import Extent, ProviderError
@@ -46,8 +49,14 @@ def cell_bounds(name: str) -> tuple[float, float, float, float]:
 
 
 def fetch_tile(name: str, dest: Path, *, timeout: int = 45,
-               max_bytes: int = TILE_MAX_BYTES, getter=None) -> Path:
-    """Stream one tile to `dest`, refusing short reads and oversized objects."""
+               deadline_s: float = 120.0, max_bytes: int = TILE_MAX_BYTES,
+               getter=None) -> Path:
+    """Stream one tile to `dest`, refusing short reads, overruns and stalls.
+
+    `timeout` is the per-read socket timeout; `deadline_s` is the total wall
+    clock budget, because a trickling connection can satisfy the former forever
+    while holding the gateway's single-flight claim.
+    """
     caller = getter or requests.get
     try:
         resp = caller(tile_url(name), stream=True, timeout=timeout)
@@ -58,10 +67,14 @@ def fetch_tile(name: str, dest: Path, *, timeout: int = 45,
 
     expected = resp.headers.get("Content-Length")
     written = 0
+    started = time.monotonic()
     dest = Path(dest)
     try:
         with open(dest, "wb") as handle:
             for chunk in resp.iter_content(1 << 20):
+                if time.monotonic() - started > deadline_s:
+                    raise ProviderError("network",
+                                        f"tile fetch exceeded {deadline_s}s")
                 written += len(chunk)
                 if written > max_bytes:
                     raise ProviderError("http", f"tile exceeds {max_bytes} bytes")
@@ -77,8 +90,6 @@ def fetch_tile(name: str, dest: Path, *, timeout: int = 45,
 
 def crop_dem(tile_path: Path, extent: Extent, size: int = 256) -> dict:
     """Crop the tile to the ring and resample to a mission-format heightmap."""
-    import numpy as np
-    import rasterio
     from rasterio.windows import from_bounds
 
     with rasterio.open(tile_path) as ds:

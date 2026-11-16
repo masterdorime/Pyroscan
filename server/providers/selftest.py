@@ -1055,5 +1055,51 @@ def payload_exposes_context_dem_only_when_cached():
         api_mod.default_gateway = original
 
 
+@case
+def dem_fetch_enforces_a_total_deadline():
+    import tempfile
+    from pathlib import Path
+    from server.providers.copernicus_dem import fetch_tile
+    dest = Path(tempfile.mkdtemp()) / "tile.tif"
+    chunks = [b"x" * 64] * 1000
+    try:
+        fetch_tile("X", dest, deadline_s=0,
+                   getter=lambda *a, **k: _StreamResp(chunks))
+    except ProviderError as e:
+        assert e.kind == "network"
+        assert not dest.exists()
+        return
+    raise AssertionError("a trickling stream ran forever")
+
+
+@case
+def dem_module_requires_rasterio_at_import():
+    import sys
+    import server.providers as pkg
+
+    saved_module = sys.modules.pop("server.providers.copernicus_dem", None)
+    had_attr = hasattr(pkg, "copernicus_dem")
+    if had_attr:
+        delattr(pkg, "copernicus_dem")
+    saved_rasterio = sys.modules.get("rasterio")
+    sys.modules["rasterio"] = None
+    try:
+        try:
+            import importlib
+            importlib.import_module("server.providers.copernicus_dem")
+        except ImportError:
+            return
+        raise AssertionError("module imported without rasterio")
+    finally:
+        if saved_rasterio is None:
+            sys.modules.pop("rasterio", None)
+        else:
+            sys.modules["rasterio"] = saved_rasterio
+        sys.modules.pop("server.providers.copernicus_dem", None)
+        if saved_module is not None:
+            sys.modules["server.providers.copernicus_dem"] = saved_module
+            setattr(pkg, "copernicus_dem", saved_module)
+
+
 if __name__ == "__main__":
     raise SystemExit(main())
