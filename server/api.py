@@ -3,11 +3,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 
 import requests
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -16,6 +17,8 @@ from . import config, db
 from .llm_agent.advisory import ACTION_CATALOG
 from .pipeline import fusion as fusion_mod
 from .pipeline import weather as weather_mod
+from .providers.gateway import default_gateway
+from .providers.geo import mission_extent
 
 app = FastAPI(title="PyroScan", version="0.1.0")
 app.add_middleware(
@@ -74,6 +77,37 @@ def _age(iso: str | None) -> int:
         return max(0, int((datetime.now(timezone.utc) - dt).total_seconds() / 60))
     except Exception:
         return 0
+
+
+def providers_summary(results: dict, ring_km: float, offline: bool) -> dict:
+    """Compact per-provider status for the dashboard. Never includes data or keys."""
+    return {
+        "ring_km": ring_km,
+        "offline": offline,
+        "items": {
+            key: {
+                "status": result.status,
+                "source": result.source,
+                "source_label": result.source_label,
+                "age_s": result.age_s,
+                "ttl_s": result.ttl_s,
+                "simulated": result.simulated,
+                "reason": result.reason,
+                "configured": result.configured,
+                "attribution": result.attribution,
+                "licence": result.licence,
+            }
+            for key, result in results.items()
+        },
+    }
+
+
+def _provider_extent(mission: dict):
+    hm = _hm(mission)
+    ring = default_gateway().cfg.ring_km
+    if hm:
+        return mission_extent(hm, ring)
+    return mission_extent(config.CONTEXT, ring)
 
 
 def _advisory(bundle: dict) -> dict | None:
@@ -293,6 +327,72 @@ def mission_mesh(mission_id: str):
     if not p or not p.exists():
         raise HTTPException(404, "mesh not found")
     return FileResponse(p, media_type="model/gltf-binary")
+
+
+@app.get("/api/v1/missions/{mission_id}/providers")
+def mission_providers(mission_id: str, background: BackgroundTasks,
+                      allow_fetch: bool = True, refresh: bool = False):
+    m = db.get_mission(_conn(), mission_id)
+    if not m:
+        raise HTTPException(404, "mission not found")
+    gw = default_gateway()
+    extent = _provider_extent(m)
+    if refresh and allow_fetch and not gw.cfg.offline:
+        for key in gw.registry:
+            gw.refresh_async(background, mission_id, key, extent)
+    results = gw.status_all(mission_id, extent,
+                            allow_fetch=allow_fetch and not gw.cfg.offline,
+                            background=background)
+    return {"mission_id": mission_id,
+            **providers_summary(results, extent.ring_km, gw.cfg.offline)}
+
+
+@app.get("/api/v1/missions/{mission_id}/providers/{key}")
+def mission_provider(mission_id: str, key: str, background: BackgroundTasks,
+                     allow_fetch: bool = True):
+    m = db.get_mission(_conn(), mission_id)
+    if not m:
+        raise HTTPException(404, "mission not found")
+    gw = default_gateway()
+    if key not in gw.registry:
+        raise HTTPException(404, "unknown provider key")
+    result = gw.get(mission_id, key, _provider_extent(m),
+                    allow_fetch=allow_fetch and not gw.cfg.offline,
+                    background=background)
+    return asdict(result)
+
+
+@app.post("/api/v1/missions/{mission_id}/providers/refresh")
+def mission_providers_refresh(mission_id: str, background: BackgroundTasks,
+                              body: dict | None = None):
+    m = db.get_mission(_conn(), mission_id)
+    if not m:
+        raise HTTPException(404, "mission not found")
+    gw = default_gateway()
+    extent = _provider_extent(m)
+    wanted = (body or {}).get("keys") or list(gw.registry)
+    queued = [key for key in wanted if key in gw.registry]
+    for key in queued:
+        gw.refresh_async(background, mission_id, key, extent)
+    return Response(
+        content=json.dumps({"queued": queued, "offline": gw.cfg.offline}),
+        status_code=202, media_type="application/json",
+    )
+
+
+@app.get("/api/v1/missions/{mission_id}/regional_fires")
+def mission_regional_fires(mission_id: str, background: BackgroundTasks,
+                           allow_fetch: bool = True):
+    m = db.get_mission(_conn(), mission_id)
+    if not m:
+        raise HTTPException(404, "mission not found")
+    gw = default_gateway()
+    if "regional_fires" not in gw.registry:
+        raise HTTPException(404, "regional fires not available")
+    result = gw.get(mission_id, "regional_fires", _provider_extent(m),
+                    allow_fetch=allow_fetch and not gw.cfg.offline,
+                    background=background)
+    return asdict(result)
 
 
 @app.get("/api/v1/events")

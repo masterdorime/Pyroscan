@@ -247,12 +247,13 @@ class _Spy:
     """Minimal adapter answering one key."""
 
     def __init__(self, key="weather", data=None, observed="2026-11-16T06:00:00Z",
-                 allow_inline=True, ttl_s=1200, boom=None):
+                 allow_inline=True, ttl_s=1200, boom=None,
+                 attribution="test", licence="test"):
         self.id = "spy"
         self.key = key
         self.source_label = "Spy"
-        self.licence = "test"
-        self.attribution = "test"
+        self.licence = licence
+        self.attribution = attribution
         self.ttl_s = ttl_s
         self.fetch_timeout_s = 6
         self.allow_inline = allow_inline
@@ -623,6 +624,53 @@ def prefetch_runs_refresh_for_requested_keys():
     assert spy.calls == 1
     assert events[0]["key"] == "weather"
     assert events[0]["status"] in ("fresh", "empty", "stale")
+
+
+@case
+def providers_summary_is_compact_and_key_free():
+    from server.api import providers_summary
+    res = {"weather": ProviderResult(
+        key="weather", data={"wind_speed_kmh": 12}, source="bmkg",
+        source_label="BMKG", observed_at="2026-11-16T06:00:00Z",
+        fetched_at="2026-11-16T06:00:05Z", age_s=120, ttl_s=1200,
+        status="fresh", reason=None, error=None,
+        licence="BMKG public", attribution="BMKG", simulated=False,
+        configured=True, fallback_from=None)}
+    out = providers_summary(res, 15.0, False)
+    assert out["ring_km"] == 15.0 and out["offline"] is False
+    assert out["items"]["weather"]["status"] == "fresh"
+    assert out["items"]["weather"]["age_s"] == 120
+    assert out["items"]["weather"]["attribution"] == "BMKG"
+    assert out["items"]["weather"]["licence"] == "BMKG public"
+    assert "data" not in out["items"]["weather"]
+
+
+@case
+def attribution_follows_the_winning_adapter():
+    import tempfile
+    from pathlib import Path
+    root = Path(tempfile.mkdtemp())
+    primary = _Spy(boom=ProviderError("network", "reset"),
+                   attribution="Primary", licence="Licence A")
+    secondary = _Spy(data={"wind_speed_kmh": 5},
+                     attribution="Secondary", licence="Licence B")
+    gw = _gw_from({"weather": (primary, secondary)}, root)
+    gw.get("M1", "weather", _extent())
+    r = gw.get("M1", "weather", _extent())  # cache hit: the real path for the UI
+    assert r.source == "spy"
+    assert r.attribution == "Secondary" and r.licence == "Licence B"
+
+
+@case
+def unconfigured_reported_even_when_fetch_disallowed():
+    import tempfile
+    from pathlib import Path
+    root = Path(tempfile.mkdtemp())
+    spy = _Spy(key="regional_fires")
+    spy.requires = ("firms_map_key",)
+    gw = _gw(spy, root)
+    r = gw.get("M1", "regional_fires", _extent(), allow_fetch=False)
+    assert r.status == "unconfigured"
 
 
 if __name__ == "__main__":

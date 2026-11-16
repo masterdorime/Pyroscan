@@ -84,8 +84,8 @@ class Gateway:
             status=derived.status,
             reason=derived.reason,
             error=env.get("last_error") if derived.status in ("error", "offline") else None,
-            licence=adapter.licence,
-            attribution=adapter.attribution,
+            licence=env.get("licence") or adapter.licence,
+            attribution=env.get("attribution") or adapter.attribution,
             simulated=False,
             configured=True,
             fallback_from=None,
@@ -231,6 +231,11 @@ class Gateway:
         if key not in self.registry:
             raise KeyError(key)
         adapter = self.registry[key][0]
+
+        # A missing key is a configuration state, not a failure: report it even
+        # when fetching is disallowed, so the UI can say "add MAP_KEY".
+        if not any(self._configured(a) for a in self.registry[key]):
+            return self._unconfigured(key, adapter)
 
         if force and allow_fetch:
             self.refresh_async(background, mission_id, key, extent)
