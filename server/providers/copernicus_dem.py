@@ -88,11 +88,11 @@ def fetch_tile(name: str, dest: Path, *, timeout: int = 45,
     return dest
 
 
-def crop_dem(tile_path: Path, extent: Extent, size: int = 256) -> dict:
-    """Crop the tile to the ring and resample to a mission-format heightmap."""
+def crop_dem(source, extent: Extent, size: int = 256) -> dict:
+    """Crop the source (local path or remote COG URL) to the ring."""
     from rasterio.windows import from_bounds
 
-    with rasterio.open(tile_path) as ds:
+    with rasterio.open(source) as ds:
         bounds = ds.bounds
         west = max(extent.west, bounds.left)
         south = max(extent.south, bounds.bottom)
@@ -163,7 +163,9 @@ class CopernicusDemProvider:
     requires: tuple[str, ...] = ()
 
     def __init__(self, *, tile_fetcher=None, size: int = 256) -> None:
-        self.tile_fetcher = tile_fetcher or fetch_tile
+        # None means "read the remote COG window directly". A callable is a test
+        # seam that yields a local file, which is how the parser tests run offline.
+        self.tile_fetcher = tile_fetcher
         self.size = size
 
     def fetch(self, extent: Extent, cfg) -> "ProviderPayload":
@@ -174,16 +176,21 @@ class CopernicusDemProvider:
         from .base import ProviderPayload
 
         name = tile_name(*extent.centre)
-        workdir = Path(tempfile.mkdtemp(prefix="pyroscan-dem-"))
         try:
-            tile = self.tile_fetcher(name, workdir / f"{name}.tif")
-            cropped = crop_dem(tile, extent, size=self.size)
+            if self.tile_fetcher is None:
+                # Windowed read straight from the COG: ~0.85 MB for a 25 km ring.
+                cropped = crop_dem(tile_url(name), extent, size=self.size)
+            else:
+                workdir = Path(tempfile.mkdtemp(prefix="pyroscan-dem-"))
+                try:
+                    tile = self.tile_fetcher(name, workdir / f"{name}.tif")
+                    cropped = crop_dem(tile, extent, size=self.size)
+                finally:
+                    shutil.rmtree(workdir, ignore_errors=True)
         except ProviderError:
             raise
         except Exception as exc:
             raise ProviderError("parse", f"DEM crop failed: {exc}") from None
-        finally:
-            shutil.rmtree(workdir, ignore_errors=True)
 
         blob = json.dumps(cropped["heightmap"], ensure_ascii=False).encode("utf-8")
         heightmap = cropped["heightmap"]

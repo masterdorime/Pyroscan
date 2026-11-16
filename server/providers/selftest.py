@@ -1140,5 +1140,32 @@ def _cfg_with_key():
                           ring_km=15.0, offline=False, ttl_overrides={})
 
 
+@case
+def dem_reads_the_remote_cog_by_default():
+    import server.providers.copernicus_dem as cd
+    seen = {}
+    real = cd.crop_dem
+
+    def spy(source, extent, size=256):
+        seen["source"] = str(source)
+        hm = {"mission_id": "context", "width": size, "height": size,
+              "west": extent.west, "south": extent.south,
+              "east": extent.east, "north": extent.north,
+              "height_scale_m": 1.0, "geoid_offset_m": 0.0, "base_height_m": 0.0,
+              "h_min": 100.0, "h_max": 200.0,
+              "heights_m": [150.0] * (size * size)}
+        return {"heightmap": hm, "clipped": False, "nodata_px": 0,
+                "bbox": {"west": extent.west, "south": extent.south,
+                         "east": extent.east, "north": extent.north}}
+
+    cd.crop_dem = spy
+    try:
+        cd.CopernicusDemProvider().fetch(_extent(), _cfg())
+    finally:
+        cd.crop_dem = real
+    assert seen["source"].startswith("https://copernicus-dem-30m.s3.amazonaws.com/")
+    assert seen["source"].endswith(".tif")
+
+
 if __name__ == "__main__":
     raise SystemExit(main())
