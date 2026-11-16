@@ -10,13 +10,15 @@ spec disagrees with the capture, the capture wins.
 
 | File | Source | Captured |
 |---|---|---|
-| `open_meteo/live.json` | Open-Meteo `v1/forecast` | — |
-| `bmkg/live.json` | BMKG `publik/prakiraan-cuaca` | — |
-| `firms/live.csv` | NASA FIRMS area CSV (VIIRS NRT) | — |
+| `open_meteo/live.json` | Open-Meteo `v1/forecast` | 2026-11-16 |
+| `bmkg/live.json` | BMKG `publik/prakiraan-cuaca`, adm4 `31.71.01.1001` | 2026-11-16 |
+| `firms/live.csv` | **synthetic** — hand-authored, no `MAP_KEY` available | — |
 
 Fill the "Captured" column when you record one. If a capture could not be made
 (no key, no network), say so here and mark the file **synthetic** rather than
-leaving the reader to guess.
+leaving the reader to guess. `firms/live.csv` is synthetic: its columns and row
+shape follow the published FIRMS area-CSV header, but the values are invented.
+Replace it with a real extract as soon as a key exists.
 
 ## `<key>/fallback.json` — the offline safety net
 

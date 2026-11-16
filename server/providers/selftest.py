@@ -11,6 +11,7 @@ from .base import (Extent, ProviderConfig, ProviderError, ProviderPayload,
 from .bmkg import BmkgProvider
 from .cache import derive, mission_dir, read_envelope, write_envelope
 from .config import load, redact
+from .firms import FirmsProvider
 from .geo import bearing_deg, haversine_km, mission_extent
 from .gateway import Gateway
 from .http import get_json, get_text
@@ -546,6 +547,68 @@ def bmkg_unresolved_adm4_is_missing_not_error():
         assert e.kind == "missing" and e.detail == "adm4_unresolved"
         return
     raise AssertionError("no ProviderError")
+
+
+_FIRMS_HEADER = ("latitude,longitude,bright_ti4,scan,track,acq_date,acq_time,"
+                 "satellite,instrument,confidence,version,bright_ti5,frp,daynight")
+
+
+def _firms_csv(rows):
+    return "\n".join([_FIRMS_HEADER] + rows) + "\n"
+
+
+def _row(lat, lon, date, t, conf="n", sensor="VIIRS"):
+    return f"{lat},{lon},330.1,0.4,0.4,{date},{t},{sensor},VIIRS,{conf},2.0NRT,290.2,4.2,D"
+
+
+@case
+def firms_parses_fixture():
+    from pathlib import Path
+    from server.providers import firms
+    text = (Path(__file__).parent / "fixtures/firms/live.csv").read_text(encoding="utf-8")
+    p = firms.parse(text, (-6.9, 107.6))
+    assert p.data["count"] == len(p.data["detections"])
+    assert p.observed_at.endswith("Z")
+    assert all(0 <= d["confidence"] <= 1 for d in p.data["detections"])
+    assert p.data["nearest_km"] is not None and p.data["nearest_km"] > 0
+
+
+@case
+def firms_handles_three_digit_acq_time():
+    from server.providers import firms
+    text = _firms_csv([_row(-6.9, 107.6, "2026-11-16", "420")])
+    p = firms.parse(text, (-6.9, 107.6))
+    assert p.data["detections"][0]["acq_at"] == "2026-11-16T04:20:00Z"
+
+
+@case
+def firms_caps_at_500_and_flags_truncation():
+    from server.providers import firms
+    rows = [_row(-6.9 + i * 0.0001, 107.6, "2026-11-16",
+                 f"{(i % 1440) // 60:02d}{i % 60:02d}") for i in range(5000)]
+    p = firms.parse(_firms_csv(rows), (-6.9, 107.6))
+    assert len(p.data["detections"]) == 500
+    assert p.data["truncated"] is True
+    assert p.data["count"] == 5000
+
+
+@case
+def firms_empty_csv_is_empty_not_error():
+    from server.providers import firms
+    p = firms.parse(_FIRMS_HEADER + "\n", (-6.9, 107.6))
+    assert p.data["count"] == 0 and p.data["detections"] == []
+    assert p.observed_at is None
+
+
+@case
+def firms_missing_key_is_unconfigured():
+    import tempfile
+    from pathlib import Path
+    root = Path(tempfile.mkdtemp())
+    gw = _gw_from({"regional_fires": (FirmsProvider(),)}, root)
+    r = gw.get("M1", "regional_fires", _extent())
+    assert r.status == "unconfigured"
+    assert r.configured is False
 
 
 if __name__ == "__main__":
