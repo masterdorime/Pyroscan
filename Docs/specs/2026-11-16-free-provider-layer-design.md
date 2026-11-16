@@ -475,31 +475,42 @@ deployment via `PYROSCAN_TTL_<KEY>_S` for testing, where `<KEY>` is the payload
 key uppercased — e.g. `PYROSCAN_TTL_WEATHER_S`,
 `PYROSCAN_TTL_CONTEXT_DEM_S`.
 
-### 7.5 COG reader gate (Phase 2 first task)
+### 7.5 COG reader gate (Phase 2 first task) — **ANSWERED 2026-11-16**
 
-`rasterio` is not installed and may not have a Python 3.14 wheel; ODM works
-around this today by reading only the local `heightmap.json`. DEM and
-Sentinel-2 both need **windowed reads over HTTPS** — downloading a full
-Sentinel-2 tile (≈ 700 MB) is unacceptable.
+Measured on the Brighton cell
+(`Copernicus_DSM_COG_10_N46_00_W092_00_DEM`, 34.1 MB, 3600², 30 m, EPSG:4326,
+1024² deflate tiles, overviews `[2,4,8]`, S3 with `Accept-Ranges: bytes`):
 
-Phase 2 opens with a measured spike, not an assumption:
+| Probe | Result |
+|---|---|
+| `rasterio` wheel for CPython 3.14 / win_amd64 | **exists** (`rasterio-1.5.2-cp314-cp314-win_amd64.whl`); installed and imported |
+| 25 km window read (814×429 px) | 4.4 s, **33.3 MB transferred** across 3 GETs, one 32.5 MB |
+| Single-pixel read | **35 MB transferred** |
+| Plain full download of the same object | 34.1 MB in 7.7 s |
+| S3 `Range: bytes=0-1023` | `206` with `Content-Range`, no `Content-Encoding` |
 
-1. Attempt `rasterio` (preferred: windowed reads, internal overviews).
-2. Measure a range-backed fallback using `tifffile` over an HTTP `Range`-capable
-   file object, reading a 25 km window from the Copernicus DEM and a Sentinel-2
-   `visual` asset.
-3. Compare bytes transferred and wall time against the budget below.
+**Decision:** use **rasterio**. Do **not** claim windowed reads for Copernicus
+DEM — every read currently transfers the whole tile, including a one-pixel read.
+The cause is unresolved and is *not* a missing range capability: S3 honours
+ranges and the tile is tiled. Treat the tile as an all-or-nothing object and
+budget accordingly.
 
-**Decision rule:** pick `rasterio` if importable and it reads windows without a
-full download; otherwise use the range-backed path for both providers.
-**Budget:** ≤ 60 MB transferred per mission ring for DEM, ≤ 25 MB for imagery.
-**If neither path meets the budget**, Phase 3 falls back to a STAC-resolved
-scene thumbnail (coarser but honest, labelled with its real resolution) and the
-limitation is recorded in `Docs/HANDOFF.md`. The spec's acceptance criteria for
-§5.4 then carry the measured resolution instead of 10 m.
+**Budget, restated from the measurement:** ~34 MB per Copernicus tile. A ring
+inside one 1° cell needs one tile (34 MB, inside the 60 MB DEM budget). A ring
+crossing a cell boundary needs two (~68 MB), so the ring crop must stay inside
+one cell wherever possible and record `source_tiles` when it cannot.
 
-This is a decision with a test attached, not an open question: the outcome is
-whichever option the measurement selects.
+The tile is downloaded once, cropped to a 256² ring heightmap, written to the
+cache, and discarded. No remote raster is kept.
+
+**Sentinel-2 re-check (Phase 3).** The same probe must be repeated against a
+`visual` COG before assuming 10 m windowed reads; the Sentinel-2 tiles are much
+larger (~700 MB), so a full-tile transfer would not fit any budget. If that
+probe also shows whole-object transfer, Phase 3 falls back to a STAC-resolved
+scene thumbnail and states its real resolution in the payload.
+
+Still true and unchanged: downloading a full Sentinel-2 tile is unacceptable, so
+Phase 3 does not begin until its own measurement says otherwise.
 
 ---
 

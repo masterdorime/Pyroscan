@@ -25,7 +25,11 @@ geometry, severity and advisory remain fixtures marked SIMULASI.
 
 **Still open.** Populate `adm4_index.json` from a licence-cleared boundary
 dataset (§15.1). Verify the FIRMS parser against a real capture — the committed
-CSV is synthetic. Phase 2 opens with the COG-reader gate (§7.5).
+CSV is synthetic. The Phase 2 COG gate (§7.5) is **answered**: rasterio installs
+on 3.14, but every Copernicus DEM read transfers the whole 34 MB tile, so DEM is
+budgeted as one full tile per ring (~68 MB when a ring crosses a 1° cell). Phase
+3 must repeat that probe against a Sentinel-2 `visual` COG before assuming
+windowed reads.
 Read this first. Do not rebuild the pipeline.
 
 ---

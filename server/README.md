@@ -106,9 +106,9 @@ python -m server.providers.prefetch --mission <id>
 
 ## Deviations and known gaps
 
-1. **rasterio is not installed on Python 3.14.** Fusion reads the 256²
-   heightmap with numpy. Move to `rasterio`/GDAL in a Python 3.12 venv before
-   claiming survey-grade slope/aspect.
+1. **rasterio is now installed** (1.5.2, cp314 wheel) but nothing in the runtime
+   imports it yet — Phase 2 will. Fusion still reads the 256² heightmap with
+   numpy for the mission path.
 2. **watchdog is not installed.** The watcher polls `spike/inbox` every 5 s.
    Replace with `watchdog` when available.
 3. **YOLO is not wired.** The import uses the three fixture hotspots; a new
