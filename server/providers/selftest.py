@@ -10,6 +10,7 @@ from .base import (Extent, ProviderConfig, ProviderError, ProviderPayload,
 from .cache import derive, mission_dir, read_envelope, write_envelope
 from .config import load, redact
 from .geo import bearing_deg, haversine_km, mission_extent
+from .gateway import Gateway
 from .http import get_json, get_text
 
 CASES: dict[str, object] = {}
@@ -236,6 +237,117 @@ def http_json_parse_error_is_typed():
         assert e.kind == "parse"
         return
     raise AssertionError("no ProviderError")
+
+
+class _Spy:
+    """Minimal adapter answering one key."""
+
+    def __init__(self, key="weather", data=None, observed="2026-11-16T06:00:00Z",
+                 allow_inline=True, ttl_s=1200, boom=None):
+        self.id = "spy"
+        self.key = key
+        self.source_label = "Spy"
+        self.licence = "test"
+        self.attribution = "test"
+        self.ttl_s = ttl_s
+        self.fetch_timeout_s = 6
+        self.allow_inline = allow_inline
+        self.requires = ()
+        self.data = data if data is not None else {"count": 1}
+        self.observed = observed
+        self.boom = boom
+        self.calls = 0
+
+    def fetch(self, extent, cfg):
+        self.calls += 1
+        if self.boom:
+            raise self.boom
+        return ProviderPayload(self.data, self.observed)
+
+
+class _Tasks:
+    def __init__(self):
+        self.tasks = []
+
+    def add_task(self, fn, *a, **k):
+        self.tasks.append((fn, a, k))
+
+
+_FIXED_NOW = datetime(2026, 11, 16, 6, 10, tzinfo=timezone.utc)
+
+
+def _cfg():
+    return ProviderConfig(firms_map_key=None, bmkg_adm4=None, ring_km=15.0,
+                          offline=False, ttl_overrides={})
+
+
+def _gw_from(registry, root):
+    """Gateway with a frozen clock so status assertions never depend on wall time."""
+    return Gateway(registry, _cfg(), root=root, now_fn=lambda: _FIXED_NOW)
+
+
+def _gw(adapter, root):
+    return _gw_from({adapter.key: (adapter,)}, root)
+
+
+def _extent():
+    return mission_extent({"west": 107.6, "south": -6.92,
+                           "east": 107.61, "north": -6.919}, 15)
+
+
+@case
+def gateway_fresh_cache_skips_adapter():
+    import tempfile
+    from pathlib import Path
+    root = Path(tempfile.mkdtemp())
+    spy = _Spy()
+    gw = _gw(spy, root)
+    gw.refresh_now("M1", "weather", _extent())
+    assert spy.calls == 1
+    r = gw.get("M1", "weather", _extent())
+    assert r.status == "fresh" and spy.calls == 1
+
+
+@case
+def gateway_stale_serves_cache_and_queues_once():
+    import tempfile
+    from pathlib import Path
+    root = Path(tempfile.mkdtemp())
+    spy = _Spy(observed="2026-11-16T05:00:00Z")
+    gw = _gw(spy, root)
+    gw.refresh_now("M1", "weather", _extent())
+    tasks = _Tasks()
+    r1 = gw.get("M1", "weather", _extent())
+    gw.refresh_async(tasks, "M1", "weather", _extent())
+    gw.refresh_async(tasks, "M1", "weather", _extent())
+    assert r1.data is not None
+    assert len(tasks.tasks) == 1
+
+
+@case
+def gateway_cold_light_fetches_inline():
+    import tempfile
+    from pathlib import Path
+    root = Path(tempfile.mkdtemp())
+    spy = _Spy(allow_inline=True)
+    gw = _gw(spy, root)
+    r = gw.get("M1", "weather", _extent())
+    assert r.status in ("fresh", "empty") and spy.calls == 1
+
+
+@case
+def gateway_cold_heavy_returns_warming():
+    import tempfile
+    from pathlib import Path
+    root = Path(tempfile.mkdtemp())
+    spy = _Spy(key="context_dem", allow_inline=False, ttl_s=2592000)
+    gw = _gw(spy, root)
+    tasks = _Tasks()
+    r = gw.get("M1", "context_dem", _extent(), background=tasks)
+    assert r.status == "unavailable"
+    assert r.reason == "warming"
+    assert spy.calls == 0
+    assert len(tasks.tasks) == 1
 
 
 if __name__ == "__main__":
