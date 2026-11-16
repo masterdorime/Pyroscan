@@ -77,7 +77,7 @@ Copernicus naming: `Copernicus_DSM_COG_10_N46_00_W092_00_DEM`. One cell per inte
 def dem_tile_name_hemispheres():
     from server.providers.copernicus_dem import tile_name
     assert tile_name(46.84, -91.99) == "Copernicus_DSM_COG_10_N46_00_W092_00_DEM"
-    assert tile_name(-6.91, 107.60) == "Copernicus_DSM_COG_10_S06_00_E107_00_DEM"
+    assert tile_name(-6.91, 107.60) == "Copernicus_DSM_COG_10_S07_00_E107_00_DEM"
     assert tile_name(0.4, 0.4) == "Copernicus_DSM_COG_10_N00_00_E000_00_DEM"
     assert tile_name(-0.4, -0.4) == "Copernicus_DSM_COG_10_S01_00_W001_00_DEM"
 

@@ -860,5 +860,33 @@ def cache_accepts_dotted_asset_names():
         raise AssertionError(f"accepted asset name {bad!r}")
 
 
+@case
+def dem_tile_name_hemispheres():
+    from server.providers.copernicus_dem import tile_name
+    assert tile_name(46.84, -91.99) == "Copernicus_DSM_COG_10_N46_00_W092_00_DEM"
+    assert tile_name(-6.91, 107.60) == "Copernicus_DSM_COG_10_S07_00_E107_00_DEM"
+    assert tile_name(0.4, 0.4) == "Copernicus_DSM_COG_10_N00_00_E000_00_DEM"
+    assert tile_name(-0.4, -0.4) == "Copernicus_DSM_COG_10_S01_00_W001_00_DEM"
+
+
+@case
+def dem_cell_bounds_round_trip():
+    from server.providers.copernicus_dem import cell_bounds, tile_name
+    west, south, east, north = cell_bounds("Copernicus_DSM_COG_10_N46_00_W092_00_DEM")
+    assert (west, south) == (-92.0, 46.0)
+    assert (east, north) == (-91.0, 47.0)
+    assert tile_name(46.5, -91.5) == "Copernicus_DSM_COG_10_N46_00_W092_00_DEM"
+
+
+@case
+def dem_tile_url_is_keyless():
+    from server.providers.copernicus_dem import tile_name, tile_url
+    name = tile_name(46.84, -91.99)
+    url = tile_url(name)
+    assert url.startswith("https://copernicus-dem-30m.s3.amazonaws.com/")
+    assert url.endswith(f"/{name}/{name}.tif")
+    assert "?" not in url and "key" not in url.lower()
+
+
 if __name__ == "__main__":
     raise SystemExit(main())
