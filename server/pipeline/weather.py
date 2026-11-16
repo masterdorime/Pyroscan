@@ -34,6 +34,38 @@ def _fixture() -> dict:
     }
 
 
+def _from_gateway(mission_id: str, lat: float, lon: float,
+                  online: bool) -> dict | None:
+    """Resolve weather through the provider gateway, or None when it has nothing."""
+    try:
+        from ..providers.gateway import default_gateway
+        from ..providers.geo import extent_from_point
+    except Exception:
+        return None
+
+    try:
+        res = default_gateway().get(mission_id, "weather",
+                                    extent_from_point(lat, lon),
+                                    allow_fetch=online)
+    except Exception:
+        return None
+    if not res.data or res.data.get("wind_speed_kmh") is None:
+        return None
+
+    data = res.data
+    return {
+        "wind_speed_kmh": data.get("wind_speed_kmh"),
+        "wind_dir_deg": data.get("wind_dir_deg"),
+        "humidity_pct": data.get("humidity_pct"),
+        "temperature_c": data.get("temp_c"),
+        "source": res.source,
+        "observed_at": res.observed_at,
+        "is_cached": 0 if res.status == "fresh" else 1,
+        "simulated": res.simulated,
+        "age_min": int((res.age_s or 0) / 60),
+    }
+
+
 def _age_min(observed_at: str) -> int:
     try:
         dt = datetime.fromisoformat(observed_at)
@@ -45,7 +77,20 @@ def _age_min(observed_at: str) -> int:
 
 
 def get_weather(lat: float, lon: float, online: bool = False,
-                cache_path: Path | None = None) -> dict:
+                cache_path: Path | None = None,
+                *, mission_id: str | None = None) -> dict:
+    """Weather for the pipeline.
+
+    With a `mission_id` the provider gateway answers (BMKG, then Open-Meteo) and
+    the result is cached per mission. Without one — or when the gateway has
+    nothing usable — the original cache-file + fixture path runs unchanged, so
+    the pipeline keeps working offline.
+    """
+    if mission_id:
+        resolved = _from_gateway(mission_id, lat, lon, online)
+        if resolved is not None:
+            return resolved
+
     cache_path = cache_path or (config.CACHE / "weather.json")
     if cache_path.exists():
         try:

@@ -419,5 +419,25 @@ def unconfigured_beats_fixture_fallback():
     assert read_envelope("M1", "regional_fires", root=root) is None
 
 
+@case
+def open_meteo_parses_fixture():
+    import json
+    from pathlib import Path
+    from server.providers import open_meteo
+    raw = json.loads(
+        (Path(__file__).parent / "fixtures/open_meteo/live.json").read_text(encoding="utf-8")
+    )
+    payload = open_meteo.parse(raw)
+    assert set(payload.data) >= {
+        "wind_speed_kmh", "wind_dir_deg", "temp_c", "humidity_pct", "precip_mm",
+        "cloud_pct", "condition", "adm4", "adm4_name", "adm4_resolved_by",
+        "forecast_hours",
+    }
+    assert payload.data["adm4"] is None
+    assert payload.data["forecast_hours"] is None
+    assert payload.observed_at.endswith("Z")
+    assert 0 <= payload.data["wind_dir_deg"] <= 359
+
+
 if __name__ == "__main__":
     raise SystemExit(main())

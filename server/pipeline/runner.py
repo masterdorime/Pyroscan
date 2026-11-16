@@ -79,7 +79,8 @@ def run_mission(
 
         center = {"lat": (hm["south"] + hm["north"]) / 2,
                   "lon": (hm["west"] + hm["east"]) / 2}
-        weather = weather_mod.get_weather(center["lat"], center["lon"], online=online)
+        weather = weather_mod.get_weather(center["lat"], center["lon"],
+                                          online=online, mission_id=mission_id)
 
         preds: list[dict] = []
         for s in spots:
