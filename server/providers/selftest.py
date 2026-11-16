@@ -6,6 +6,7 @@ import traceback
 
 from .base import (Extent, ProviderConfig, ProviderError, ProviderPayload,
                    ProviderResult)
+from .cache import mission_dir, read_envelope, write_envelope
 from .config import load, redact
 from .geo import bearing_deg, haversine_km, mission_extent
 
@@ -95,6 +96,50 @@ def config_redacts_secret():
     out = redact("GET https://firms.example/api/csv/SECRET123/VIIRS/1,2,3,4/1", "SECRET123")
     assert "SECRET123" not in out
     assert "***" in out
+
+
+@case
+def cache_roundtrip_and_atomic():
+    import tempfile
+    from pathlib import Path
+    root = Path(tempfile.mkdtemp())
+    write_envelope("M1", "weather", {"schema": 1, "key": "weather", "data": {"a": 1}}, root=root)
+    env = read_envelope("M1", "weather", root=root)
+    assert env["data"] == {"a": 1}
+    assert list((root / "M1").glob("*.tmp")) == []
+
+
+@case
+def cache_corrupt_returns_none():
+    import tempfile
+    from pathlib import Path
+    root = Path(tempfile.mkdtemp())
+    p = write_envelope("M1", "weather", {"schema": 1}, root=root)
+    p.write_text("{not json", encoding="utf-8")
+    assert read_envelope("M1", "weather", root=root) is None
+
+
+@case
+def cache_rejects_path_traversal():
+    for bad in ("../evil", "a/b", "", "..", "a b"):
+        try:
+            mission_dir(bad)
+        except ValueError:
+            continue
+        raise AssertionError(f"accepted {bad!r}")
+
+
+@case
+def cache_preserves_non_ascii():
+    import tempfile
+    from pathlib import Path
+    root = Path(tempfile.mkdtemp())
+    data = {"condition": "Cerah Berawan", "note": "Hujan Ringan - pantau", "name": "Kel. Sukajadi"}
+    write_envelope("M1", "weather", {"schema": 1, "data": data}, root=root)
+    back = read_envelope("M1", "weather", root=root)
+    assert back["data"] == data
+    raw = (root / "M1" / "weather.envelope.json").read_text(encoding="utf-8")
+    assert "Cerah Berawan" in raw
 
 
 if __name__ == "__main__":

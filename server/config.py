@@ -7,6 +7,7 @@ DB_PATH = SERVER / "pyroscan.db"
 WEB = ROOT / "spike" / "web"
 MISSIONS = ROOT / "spike" / "missions"
 CACHE = SERVER / "cache"
+PROVIDERS_CACHE = CACHE / "providers"
 INBOX = ROOT / "spike" / "inbox"
 
 NODEODM = "http://127.0.0.1:3000"
@@ -45,5 +46,6 @@ STAGES = ["CAPTURE", "PHOTOGRAMMETRY", "FUSION", "SIMULATION", "ADVISORY", "DONE
 
 
 def ensure_dirs() -> None:
-    for p in (MISSIONS, CACHE, INBOX, SERVER / "photogrammetry", SERVER / "pipeline"):
+    for p in (MISSIONS, CACHE, PROVIDERS_CACHE, INBOX,
+              SERVER / "photogrammetry", SERVER / "pipeline"):
         p.mkdir(parents=True, exist_ok=True)
