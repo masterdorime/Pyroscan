@@ -9,14 +9,21 @@ planned, not built. Specs and plans: `Docs/specs/2026-11-16-free-provider-layer-
 `Docs/plans/2026-11-16-free-provider-layer-phase-1.md`,
 `Docs/plans/2026-11-16-free-provider-layer-phase-2.md`.
 
-**Phase 2 measured facts.** A Copernicus tile is 34 MB (Brighton) / 42 MB
-(S07 Indonesia). Every remote read transferred the whole object, even for one
-pixel, so the adapter downloads once, crops to a 256² ring heightmap, and
-deletes the tile. Cached cost is ~700 KB per mission, not the 25 MB the spec
-originally budgeted. A ring crossing a 1° cell boundary is clipped and flagged
-(`clipped: true`), not mosaicked. Context renders relief over the 1.35 km
-mosaic footprint only, anchored so the DEM at the mission centre meets the old
-plane — the shape is real, the absolute datum is tied to the mission.
+**Phase 2 measured facts.** Copying a 1° cell is not necessary: a 25 km window
+read from the Copernicus COG transferred **0.85 MB**, so the remote raster can be
+read directly and cropped in memory. The shipped adapter predates that
+correction and still downloads the full 34–42 MB tile to a temp file; it is
+correct but ~34× more transfer than needed. Cached cost is ~700 KB per mission.
+A ring crossing a 1° cell boundary is clipped and flagged (`clipped: true`), not
+mosaicked. Context renders relief over the 1.35 km mosaic footprint only,
+anchored so the DEM at the mission centre meets the old plane — the shape is
+real, the absolute datum is tied to the mission.
+
+**Measurement lesson (recorded because it cost two wrong conclusions).** GDAL
+curl-verbose logs report the full object size as `Content-Length` on **HEAD**
+responses. Summing that overstates a windowed read by the whole file. Count
+`Content-Range` spans on `206` bodies instead. The spec's §7.5 has the corrected
+table.
 
 **Architecture (Phase 1).** `server/providers/` holds one adapter per source and
 one `Gateway` that owns a per-mission file cache, read-time status derivation,
@@ -34,11 +41,11 @@ for any mission outside Indonesia once the index is populated). FIRMS is
 geometry, severity and advisory remain fixtures marked SIMULASI.
 
 **Still open.** Populate `adm4_index.json` from a licence-cleared boundary
-dataset (§15.1). The Phase 3 Sentinel-2 gate **failed** (§7.5): a correct 1.2 km
-window still transfers 306 MB, and the scene thumbnail is ~320 m/px. Imagery
-needs a decision between a keyless Sentinel-2 tile service (measured working,
-~3 KB per tile), keeping Esri, or deferring. Do not start Phase 3 until that is
-settled.
+dataset (§15.1). The Phase 3 Sentinel-2 gate **passes** after correcting a
+measurement error (§7.5): a 1.2 km window transfers 1.46 MB and a 25 km window
+15.95 MB, both inside budget. Phase 3 can proceed as specified. Also pending: the
+DEM adapter still downloads whole tiles and should be switched to windowed reads
+(~0.85 MB instead of 34–42 MB).
 Read this first. Do not rebuild the pipeline.
 
 ---

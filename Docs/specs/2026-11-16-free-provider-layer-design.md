@@ -475,71 +475,39 @@ deployment via `PYROSCAN_TTL_<KEY>_S` for testing, where `<KEY>` is the payload
 key uppercased — e.g. `PYROSCAN_TTL_WEATHER_S`,
 `PYROSCAN_TTL_CONTEXT_DEM_S`.
 
-### 7.5 COG reader gate (Phase 2 first task) — **ANSWERED 2026-11-16**
+### 7.5 COG access — **measured 2026-11-17; an earlier reading of this gate was wrong**
 
-Measured on the Brighton cell
-(`Copernicus_DSM_COG_10_N46_00_W092_00_DEM`, 34.1 MB, 3600², 30 m, EPSG:4326,
-1024² deflate tiles, overviews `[2,4,8]`, S3 with `Accept-Ranges: bytes`):
+**Measurement trap, recorded so nobody repeats it.** Curl verbose logs report
+`Content-Length` on **HEAD** responses, which is the whole object size with no
+body. Summing `Content-Length` therefore inflates a windowed read to the full
+file. Count `Content-Range` spans for `206` bodies and `Content-Length` only for
+a `200` GET body. The first pass through this gate ignored that and concluded
+both providers transferred whole objects; both conclusions were false.
 
-| Probe | Result |
+Corrected measurements:
+
+| Probe | Transferred |
 |---|---|
-| `rasterio` wheel for CPython 3.14 / win_amd64 | **exists** (`rasterio-1.5.2-cp314-cp314-win_amd64.whl`); installed and imported |
-| 25 km window read (814×429 px) | 4.4 s, **33.3 MB transferred** across 3 GETs, one 32.5 MB |
-| Single-pixel read | **35 MB transferred** |
-| Plain full download of the same object | 34.1 MB in 7.7 s |
-| S3 `Range: bytes=0-1023` | `206` with `Content-Range`, no `Content-Encoding` |
+| Copernicus DEM, 25 km window | **0.85 MB** |
+| Copernicus DEM, single pixel | **2.59 MB** (one 1024² block) |
+| Sentinel-2 `TCI.tif` (290 MB object), 1.2 km window | **1.46 MB** |
+| Sentinel-2 `TCI.tif`, 25 km window | **15.95 MB** |
 
-**Decision:** use **rasterio**. Do **not** claim windowed reads for Copernicus
-DEM — every read currently transfers the whole tile, including a one-pixel read.
-The cause is unresolved and is *not* a missing range capability: S3 honours
-ranges and the tile is tiled. Treat the tile as an all-or-nothing object and
-budget accordingly.
+Both sit inside the original budgets (DEM ≤ 60 MB, imagery ≤ 25 MB).
 
-**Budget, restated from the measurement:** ~34 MB per Copernicus tile. A ring
-inside one 1° cell needs one tile (34 MB, inside the 60 MB DEM budget). A ring
-crossing a cell boundary needs two (~68 MB), so the ring crop must stay inside
-one cell wherever possible and record `source_tiles` when it cannot.
+**Decisions:**
 
-The tile is downloaded once, cropped to a 256² ring heightmap, written to the
-cache, and discarded. No remote raster is kept.
-
-**Sentinel-2 re-check (Phase 3) — ANSWERED 2026-11-16, gate FAILED.**
-
-Measured against a real scene over the Brighton demo area
-(`S2B_15TWM_20261002_0_L2A`, 0.0001 % cloud, Earth Search STAC, keyless):
-`TCI.tif` is 290.1 MB, EPSG:32615, 10 980², 1024² tiles, `Accept-Ranges: bytes`.
-
-| Probe | Result |
-|---|---|
-| 1.2 km window (123×85 px), bounds reprojected to the tile CRS | 1.7 s, **306 MB transferred**, one 290 MB response |
-| 25 km window (2451×1755 px) | 5.6 s, same total |
-| Scene `thumbnail` asset | 24.8 KB, **343×343 px** — ≈320 m/px over a 110 km scene |
-
-**Decision: do not implement windowed Sentinel-2 reads.** As with Copernicus, a
-correct, non-empty window still transfers the entire object. The same file shows
-the pattern a third time (S3 advertises ranges; GDAL fetches everything), so the
-cause is environmental and not worth chasing for this phase.
-
-**The spec's own contingency does not rescue it either.** Full tile is
-290–330 MB per mission, roughly 3–10× the entire per-mission budget and
-unusable on a field link. The thumbnail contingency is 343 px across 110 km —
-~320 m/px, which cannot serve a 1.35 km context mosaic.
-
-**Viable alternatives, for a decision (not yet chosen):**
-
-1. **Keyless Sentinel-2 tile service (measured, recommended).**
-   `https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2024_3857/default/g/{z}/{y}/{x}.jpg`
-   returned 200 with 2.5–4 KB JPEGs in ~0.6 s for z12, z14 and z16 over the demo
-   mission. A 1.35 km mosaic is a handful of tiles totalling tens of KB, versus
-   290 MB. Attribution EOX/ESA, CC BY. Same shape as the OSM path already
-   planned for Phase 4, so one tile cache serves both.
-2. **Keep the Esri prototype basemap** and accept the licensing limit for now;
-   ship Phase 4 (place names) before any imagery change.
-3. **Defer imagery entirely** and treat the DEM as the context improvement for
-   this release.
-
-Option 1 changes Phase 3's architecture from COG reading to tile fetching, so it
-needs a rewritten Phase 3 plan and a licence check on the EOx mosaic terms.
+- **Windowed reads are the supported path** for both providers. Use rasterio with
+  the remote URL; no full-tile download, no temp copy, no thumbnail fallback.
+- **Copernicus DEM:** read the ring window directly and resample to 256².
+  A mission refresh should transfer ~1–2 MB, not 34–42 MB. Ring crossing a cell
+  boundary still needs two tiles or a clip; clip and flag as before.
+- **Sentinel-2:** 10 m context imagery via `TCI.tif` from Earth Search is viable
+  at 1.5–16 MB per ring depending on ring size. Phase 3 proceeds as originally
+  specified. The keyless tile service and thumbnail fallback are no longer
+  required; the thumbnail at ~320 m/px remains unusable at any rate.
+- A single pixel costing 2.6 MB means block granularity dominates tiny reads;
+  that is expected with 1024² tiles and is not a problem for a 10 km ring.
 
 ---
 

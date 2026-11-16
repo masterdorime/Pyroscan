@@ -75,10 +75,12 @@ gateway in `server/providers/`. The browser never calls a provider.
 | `regional_fires` | NASA FIRMS NRT | `PYROSCAN_FIRMS_MAP_KEY` | 2 h |
 | `context_dem` | Copernicus DEM 30 m | none | 30 d |
 
-- `context_dem` downloads one ~34–42 MB tile, crops it to a 256² ring
-  heightmap, writes ~700 KB beside the envelope, and deletes the tile. Measured:
-  every remote read transfers the whole object, so windowed reads are not used.
-  A ring crossing a 1° cell boundary is clipped and flagged, not mosaicked.
+- `context_dem` reads the ring window straight from the remote COG and resamples
+  to a 256² heightmap (~0.85 MB transferred for a 25 km window), then caches
+  ~700 KB per mission. A ring crossing a 1° cell boundary is clipped and flagged,
+  not mosaicked. **Note:** the current adapter still downloads the whole tile to
+  a temp file (34–42 MB) because that was written against a mis-measured gate;
+  switching it to a direct windowed read is a pending ~34× reduction.
 
 - Cache: `server/cache/providers/<mission_id>/<key>.envelope.json` (gitignored,
   disposable — delete a mission's folder to force a refetch).
