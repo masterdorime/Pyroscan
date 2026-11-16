@@ -88,6 +88,9 @@ Docs/                   design spec, handoff, reference gallery
 
 This is a working vertical slice, not a production deployment. Known gaps:
 
+- **Next:** a free provider layer (BMKG/Open-Meteo, NASA FIRMS, Copernicus DEM,
+  Sentinel-2, OSM/Photon). Planning is in progress; see
+  `Docs/NEXT_AGENT_PROMPT.md` and `Docs/HANDOFF.md` §8.
 - YOLO fire/smoke detections are not wired; hotspot positions are fixtures.
 - The watcher/NodeODM path has not been exercised on a new flight.
 - Heat, wind, prediction geometry, severity, weather, and advisory are fixtures.

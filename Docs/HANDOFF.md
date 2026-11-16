@@ -2,7 +2,7 @@
 
 **Date:** 2026-11-16
 **Repo:** https://github.com/masterdorime/Pyroscan (public, `main`). Raw drone data and the reference video are not committed; the demo DB, mission assets, Cesium bundle, and screenshots are.
-**Status:** working vertical slice; UI pivot complete + Context/Reconstruction view revision — Steps 1–4 done (paper skin, incident header + card rail, theme dropdown, elevation chart, bright landscape), with the patch hidden until opened.
+**Status:** working vertical slice; UI pivot complete + Context/Reconstruction view revision — Steps 1–4 done. **Current focus: planning the free provider layer (BMKG/Open-Meteo/FIRMS/Copernicus DEM/Sentinel-2/OSM) — no provider code or approved spec yet.**
 Read this first. Do not rebuild the pipeline.
 
 ---
@@ -22,6 +22,13 @@ Read this first. Do not rebuild the pipeline.
   header, card rail, elevation profile, and a bright landscape in paper.
   Obsidian keeps the dark studio. The scene is a flat context basemap, not a
   context DEM.
+- **Next: free provider layer (planning).** Indonesia-first, hybrid live
+  refresh, mission + 10–25 km regional ring, auto-resolved BMKG `adm4`.
+  Planned: BMKG, Open-Meteo, NASA FIRMS, Copernicus DEM, Sentinel-2,
+  OSM/Photon. No paid keys. Spec and implementation are **not done**.
+- **Coordinate readout is not implemented.** The top bar shows the mission
+  centre, not the cursor. A hover probe/card was discussed; accuracy is limited
+  by drone GPS and basemap registration, not by the UI math.
 
 ---
 
@@ -61,7 +68,11 @@ Android payload ──Wi-Fi bulk──► photo folder ──watcher──► No
                                          Cesium dashboard (web)
 ```
 
-- One API boundary: FastAPI. No Cesium ion, no CDN, no external tiles at runtime.
+- One API boundary: FastAPI. Offline-critical path; online providers are cached.
+  No Cesium ion, no CDN, no Google tiles.
+- **Planned provider gateway** (not built): BMKG/Open-Meteo, NASA FIRMS,
+  Copernicus DEM, Sentinel-2, OSM/Photon → FastAPI adapters → cache/TTL →
+  API/UI source/age metadata.
 - Two languages: Python server, TypeScript/JS UI (current shell is plain JS;
   React/Vite port is pending).
 - GPU rule: ODM and LLM never share VRAM (`OLLAMA_KEEP_ALIVE=0`).
@@ -72,7 +83,9 @@ Android payload ──Wi-Fi bulk──► photo folder ──watcher──► No
 
 | Path | Role |
 |---|---|
-| `server/api.py` | REST + SSE + static dashboard |
+| `server/api.py` | REST + SSE + static dashboard; path rebase for clone |
+| `Docs/NEXT_AGENT_PROMPT.md` | copy-paste handoff prompt for the next agent |
+| **Planned** `server/providers/` | provider adapters + cache/TTL (not built) |
 | `server/db.py` | SQLite schema and queries |
 | `server/pipeline/runner.py` | mission orchestration |
 | `server/pipeline/assets.py` | ODM → heightmap/ortho/shaded ortho |
@@ -100,8 +113,10 @@ Browser → FastAPI:
 `/mesh.glb`, `/events` (SSE heartbeat), `/data/*` static.
 
 Server → services: NodeODM REST, Ollama `/api/generate`, Open-Meteo
-`/v1/forecast` (cached; optional). Prototype minimap uses a cached Esri image;
-product path is Sentinel-2 or an offline tile pack.
+`/v1/forecast` (cached; optional). **Planned:** BMKG, NASA FIRMS, Copernicus
+DEM, Sentinel-2, OSM/Photon via a provider gateway; `/providers` status,
+`/regional`, `/context`; per-provider source/age. Prototype minimap uses a
+cached Esri image; product path is Sentinel-2 or an offline tile pack.
 
 Data:
 - `spike/missions/<id>/heightmap.json` — 384² DSM
@@ -110,6 +125,7 @@ Data:
 - `spike/missions/<id>/spatial_fusion.json`, `advisory.json`
 - `spike/web/data/` — terrain/elevation/severity/heat/floor/context assets
 - `server/cache/weather.json`
+- **Planned:** `server/cache/providers/<mission>/` — provider payloads + metadata
 
 ---
 
@@ -149,6 +165,8 @@ Data:
   `ref-pyroscan-obsidian.png` (context obsidian),
   `ref-pyroscan-recon-paper.png`, `ref-pyroscan-recon-obsidian.png`,
   `ref-pyroscan-theme-menu.png`.
+- **Not implemented:** live cursor coordinate probe/card, provider layers,
+  regional FIRMS view, context DEM/imagery, OSM place labels/geocoder.
 
 ---
 
@@ -274,12 +292,85 @@ distinct, and do not imply reconstruction beyond the measured patch.
 
 ---
 
-## 8. Known gaps
+## 8. Free provider layer — planning (not implemented)
+
+The next planned subsystem is a free/keyless provider layer. No provider code
+or approved spec exists yet.
+
+**Locked decisions**
+- **Indonesia-first**; Brighton remains the demo.
+- **Hybrid live refresh**: fetch when online, always serve cache, show
+  source/age/stale. No paid APIs.
+- **Mission + 10–25 km regional ring** cache footprint.
+- **Auto-resolve BMKG `adm4`** from a bundled Indonesian level-4
+  boundary/code index; manual `adm4` fallback; Open-Meteo fallback.
+
+**Providers**
+
+| Provider | Role | Key / account | Cost |
+|---|---|---|---|
+| BMKG | Indonesian weather/wind primary | none; needs `adm4` | free |
+| Open-Meteo | global weather/wind fallback | none (non-commercial) | free |
+| NASA FIRMS | regional active fire (NRT) | free `MAP_KEY` | free |
+| Copernicus DEM | context terrain (30 m) | none (AWS Open Data) | free |
+| Sentinel-2 | context imagery (10 m) | none on AWS; free CDSE account optional | free |
+| OSM / Photon | roads, place labels, reverse geocode | none; public policy/self-host | free |
+| ODM / Ollama | existing mission reconstruction / advisory | none | local |
+
+**Recommended architecture**
+- **A. FastAPI provider gateway + cache** (recommended): one adapter per
+  provider, shared `ProviderResult` (`data`, `source`, `observed_at`,
+  `fetched_at`, `age`, `status`, `error`, `licence`), file cache, TTL,
+  background/CLI prefetch. No Redis/Celery.
+- **B. Browser calls providers directly** — rejected: keys/CORS/terms, no
+  central cache, weak offline behavior.
+- **C. Separate data-pipeline service** — use as a prefetch step inside A for
+  heavy DEM/Sentinel/OSM data, not a separate runtime.
+
+**TTLs**: weather 15–30 min; FIRMS 1–3 h; Sentinel 1–5 days; DEM/OSM 30–90 days.
+
+**API/UI**: `/api/v1/missions/{id}/providers` status; payload additions for
+`regional_fires`, `context_dem`, `context_imagery`, `places`. UI adds a
+**Live data** source/age card, regional FIRMS layer/inset, context terrain and
+imagery, OSM labels/place card. Real satellite fire is labelled
+`NASA FIRMS · NRT`, not `SIMULASI`.
+
+**Phases**
+1. Provider framework + BMKG/Open-Meteo + FIRMS + source/age. FIRMS starts as a
+   regional card/inset.
+2. Copernicus DEM + regional context terrain.
+3. Sentinel-2 context imagery; replace the Esri prototype basemap.
+4. OSM/Photon labels + coordinate place card.
+5. Hardening: stale/offline states, provider fixtures, failure tests,
+   attribution, storage.
+
+**Risks**
+- BMKG `adm4`: finding an open level-4 boundary/code dataset that maps cleanly
+  to BMKG codes and permits use. Manual `adm4`/Open-Meteo is the safety valve.
+- Sentinel-2 clouds/revisit; windowed COG reads needed.
+- OSM public tile/Nominatim limits; self-host for production.
+- Esri licensing; replace for a free public deployment.
+- Hybrid mixed-age data; source/age/stale UI is mandatory.
+- Per-mission ring storage ~30–100 MB; no GPU for providers; ODM is still the
+  hardware bottleneck.
+
+**Coordinate readout**: not implemented. It is local Cesium math; accuracy is
+limited by drone GPS/basemap registration, not by the hover code. OSM/Photon
+later supplies place names for a Google-like card. Do not imply survey accuracy.
+
+**Next step**: write the spec at `Docs/specs/2026-11-16-free-provider-layer-design.md`,
+run the spec self-review, ask the user to review it, then use `writing-plans`.
+Do not start provider implementation before that approval.
+
+---
+
+## 9. Known gaps
 
 1. **YOLO is not wired.** Hotspots are imported fixtures; a new inbox mission
    creates one manual centre hotspot.
 2. **Watcher/NodeODM client** are wired but not exercised on a new flight.
-3. **Weather** is the cached fixture unless `online=True`.
+3. **Weather** is the cached fixture unless `online=True`; implementation uses
+   Open-Meteo, not BMKG. BMKG is planned.
 4. **Advisory** is the template (engine severity + closed catalog); `--llm`
    calls qwen3.5:4b and falls back to the template.
 5. **Heat, wind, prediction, severity** remain fixtures; labeled SIMULASI.
@@ -299,10 +390,19 @@ distinct, and do not imply reconstruction beyond the measured patch.
     the camera frustum/heading overlay is not implemented.
 14. **Context footprint is an area-equivalent disc** (0.71 ha), not the exact
     irregular ortho boundary. An alpha-contour footprint would be more precise.
+15. **Provider layer is not implemented.** BMKG/Open-Meteo/FIRMS/Copernicus
+    DEM/Sentinel-2/OSM are planned only; the spec is not written.
+16. **Cursor coordinate readout is not implemented.** The top bar shows the
+    mission centre, not the mouse. Hover math is local; absolute accuracy is
+    limited by drone GPS and basemap registration.
+17. **`mesh.glb` is not committed.** The API `/mesh.glb` endpoint can 404; the
+    dashboard builds its mesh from `heightmap.json` and does not use it.
+18. **Provider servers were stopped by a restart.** Start uvicorn/static server
+    with the commands in §2 before testing.
 
 ---
 
-## 9. Environment
+## 10. Environment
 
 - Python 3.14, FastAPI, uvicorn, requests, numpy, tifffile, Pillow.
 - Node 24, Cesium 1.147 (local), Playwright Edge.
@@ -312,7 +412,7 @@ distinct, and do not imply reconstruction beyond the measured patch.
 
 ---
 
-## 10. References
+## 11. References
 
 - FireTrace video: `spike/ref/x_video.mp4`; frames in `Docs/references/`
   (`ref-firetrace-3d.jpg`, `ref-firetrace-drones.jpg`, `ref-firetrace-thermal.jpg`).
@@ -324,17 +424,25 @@ distinct, and do not imply reconstruction beyond the measured patch.
   `ref-pyroscan-recon-paper.png`, `ref-pyroscan-recon-obsidian.png`,
   `ref-pyroscan-theme-menu.png`, `ref-pyroscan-studio.png`,
   `ref-pyroscan-topo.png`.
+- Next-agent prompt: `Docs/NEXT_AGENT_PROMPT.md`.
+- Provider spec (planned): `Docs/specs/2026-11-16-free-provider-layer-design.md`.
 
 ---
 
-## 11. Start here
+## 12. Start here
 
-1. Read `Docs/dashboard_design.md` and this file.
-2. Confirm the API runs and the live dashboard loads.
+1. Read `Docs/HANDOFF.md`, `Docs/NEXT_AGENT_PROMPT.md`, and
+   `Docs/dashboard_design.md`.
+2. Start the API and/or static server with the commands in §2; the previous
+   background servers were stopped by a restart.
 3. The UI pivot and view revision are complete; review
    `spike/shots/context-paper.png`, `recon-paper.png`, `context-obsidian.png`,
    `recon-obsidian.png`, and `theme-menu-context.png`.
-4. Next lanes: wire YOLO detections into hotspots, exercise a new mission
-   through the watcher/NodeODM, add real SSE progress, then the React/Vite port.
-   Scene refinement only if needed: context DEM or Three.js lighting.
-5. Keep the design doc and screenshots in sync.
+4. **Current task:** write
+   `Docs/specs/2026-11-16-free-provider-layer-design.md` from §8, self-review
+   it, and ask the user to approve it. Do not implement providers before that.
+5. After spec approval: use `writing-plans`, then build Phase 1 (provider
+   framework + BMKG/Open-Meteo + FIRMS + source/age), then DEM, Sentinel-2,
+   OSM/Photon.
+6. Other lanes after/parallel: YOLO detections, watcher/NodeODM real mission,
+   SSE progress, React/Vite port. Keep docs and screenshots in sync.
