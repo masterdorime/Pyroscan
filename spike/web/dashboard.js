@@ -762,7 +762,9 @@ function renderWeatherNote() {
 
   const mins = item && item.age_s != null ? Math.round(item.age_s / 60) : null;
   let line = '';
-  if (item && (item.reason === 'adm4_unresolved' || item.fallback_from === 'bmkg')) {
+  if (simulated) {
+    line = 'sample data — not live';
+  } else if (item && (item.reason === 'adm4_unresolved' || item.fallback_from === 'bmkg')) {
     line = 'BMKG code unresolved for this location — using Open-Meteo';
   } else if (w && w.source === 'bmkg' && w.forecast_hours != null) {
     line = `BMKG · forecast ${w.forecast_hours} h ahead`;
@@ -773,7 +775,6 @@ function renderWeatherNote() {
   } else if (item && mins != null) {
     line = `${item.source_label} · observed ${mins} min ago`;
   }
-  if (simulated) line += `${line ? ' · ' : ''}sample data`;
 
   note.textContent = line;
   note.className = 'small w-note'

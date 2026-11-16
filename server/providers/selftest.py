@@ -747,5 +747,29 @@ def warm_cache_survives_a_failed_refresh_as_offline():
     assert r.data and r.data["wind_speed_kmh"] == 7
 
 
+@case
+def offline_with_no_cache_falls_back_to_fixture():
+    import tempfile
+    from pathlib import Path
+    root = Path(tempfile.mkdtemp())
+    spy = _Spy(key="regional_fires")
+    spy.requires = ()
+    gw = _gw(spy, root)
+    r = gw.get("M1", "regional_fires", _extent(), allow_fetch=False)
+    assert r.simulated is True and r.reason == "fixture_fallback"
+    assert r.data and r.data["count"] == 0
+
+
+@case
+def offline_weather_uses_the_committed_fixture():
+    import tempfile
+    from pathlib import Path
+    root = Path(tempfile.mkdtemp())
+    gw = _gw(_Spy(), root)
+    r = gw.get("M1", "weather", _extent(), allow_fetch=False)
+    assert r.simulated is True and r.reason == "fixture_fallback"
+    assert r.data and r.data.get("wind_speed_kmh") is not None
+
+
 if __name__ == "__main__":
     raise SystemExit(main())

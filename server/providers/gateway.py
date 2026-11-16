@@ -112,6 +112,8 @@ class Gateway:
         )
 
     def _fixture(self, key: str) -> dict | None:
+        if key == "weather":
+            return self._weather_fixture()
         path = cache.FIXTURES / key / "fallback.json"
         try:
             import json
@@ -120,14 +122,43 @@ class Gateway:
             return None
         return payload if isinstance(payload, dict) else None
 
+    def _weather_fixture(self) -> dict | None:
+        """Weather reads the existing shell fixture; no second copy to drift."""
+        import json
+
+        from .. import config as server_config
+        try:
+            raw = json.loads(
+                (server_config.WEB / "data" / "fixtures.json").read_text(encoding="utf-8")
+            )
+        except (OSError, ValueError):
+            return None
+        block = raw.get("weather") or {}
+        if not block:
+            return None
+        return {
+            "wind_speed_kmh": block.get("wind_speed_kmh"),
+            "wind_dir_deg": block.get("wind_dir_deg"),
+            "temp_c": block.get("temp_c"),
+            "humidity_pct": block.get("humidity_pct"),
+            "precip_mm": None,
+            "cloud_pct": None,
+            "condition": None,
+            "adm4": None,
+            "adm4_name": None,
+            "adm4_resolved_by": None,
+            "forecast_hours": None,
+        }
+
     def _fixture_result(self, key: str, adapter: Provider) -> ProviderResult:
         return ProviderResult(
             key=key, data=self._fixture(key), source="fixture",
-            source_label=adapter.source_label, observed_at=None, fetched_at=None,
+            source_label="Sample data", observed_at=None, fetched_at=None,
             age_s=None, ttl_s=self._ttl(adapter), status="error",
-            reason="fixture_fallback", error=None, licence=adapter.licence,
-            attribution=adapter.attribution, simulated=True, configured=True,
-            fallback_from=None,
+            reason="fixture_fallback", error=None,
+            licence="n/a (offline fixture)",
+            attribution="Offline sample - not live data",
+            simulated=True, configured=True, fallback_from=None,
         )
 
     def _do_refresh(self, mission_id: str, key: str, extent: Extent) -> ProviderResult:
@@ -245,6 +276,8 @@ class Gateway:
             return warm
 
         if not allow_fetch or self.cfg.offline:
+            if self._fixture(key) is not None:
+                return self._fixture_result(key, adapter)
             return self._result(key, adapter, None, derive(None, self._ttl(adapter),
                                                            now=self._now()))
 
