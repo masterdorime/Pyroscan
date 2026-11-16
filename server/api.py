@@ -216,15 +216,10 @@ def _payload(mission: dict, background=None) -> dict:
     gw = default_gateway()
     extent = _provider_extent(mission)
     allow_fetch = not gw.cfg.offline
-    weather_result = gw.get(mission["id"], "weather", extent,
-                            allow_fetch=allow_fetch, background=background)
+    results = gw.status_all(mission["id"], extent, allow_fetch=allow_fetch,
+                            background=background)
+    weather_result = results.get("weather")
     weather = _weather(bundle, hm, weather_result)
-
-    results = {key: result for key, result in [("weather", weather_result)]}
-    if "regional_fires" in gw.registry:
-        results["regional_fires"] = gw.get(mission["id"], "regional_fires", extent,
-                                           allow_fetch=allow_fetch,
-                                           background=background)
     fires = results.get("regional_fires")
 
     spots = []

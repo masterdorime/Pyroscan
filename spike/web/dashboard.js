@@ -82,6 +82,7 @@ function fail(e) {
   initViewer();
   buildStudioFloor();
   buildLandscape();
+  loadContextDem(live);
   buildShadow();
   buildMission();
   buildOverlays();
@@ -315,7 +316,8 @@ function buildLandscape() {
     });
   };
   const collection = new C.PrimitiveCollection();
-  collection.add(quad(0.2, 0.8, 0.2, 0.8, false));   // opaque centre
+  state.prims.landscapeCenter = quad(0.2, 0.8, 0.2, 0.8, false);  // opaque centre
+  collection.add(state.prims.landscapeCenter);
   collection.add(quad(0, 1, 0, 0.2, true));          // north band
   collection.add(quad(0, 1, 0.8, 1, true));          // south band
   collection.add(quad(0, 0.2, 0.2, 0.8, true));      // west band
@@ -490,6 +492,99 @@ function setMode(mode) {
   applySceneTheme();
   renderLegend();
   renderFiresInset();
+}
+
+/* ---------------- context terrain (30 m DEM) ---------------- */
+function loadContextDem(live) {
+  const url = live && live.assets && live.assets.context_dem;
+  if (!url) return;
+  fetch(url, { cache: 'no-store' })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((dem) => {
+      if (!dem || !dem.heights_m || !dem.width) return;
+      state.contextDem = dem;
+      buildContextTerrain();
+    })
+    .catch(() => { /* the flat plane stays; Context still works */ });
+}
+
+function buildContextTerrain() {
+  const dem = state.contextDem;
+  const collection = state.prims.landscape;
+  if (!dem || !collection || !state.prims.landscapeCenter) return;
+
+  const c = state.f.context;
+  const base = state.center.hmin - 1.6;
+  const N = 96;
+
+  const sample = (lon, lat) => {
+    const u = (lon - dem.west) / (dem.east - dem.west);
+    const v = (dem.north - lat) / (dem.north - dem.south);
+    if (u < 0 || u > 1 || v < 0 || v > 1) return null;
+    const x = clamp(Math.round(u * (dem.width - 1)), 0, dem.width - 1);
+    const y = clamp(Math.round(v * (dem.height - 1)), 0, dem.height - 1);
+    return dem.heights_m[y * dem.width + x];
+  };
+
+  // Anchor relief so the DEM at the mission centre meets the existing plane:
+  // the shape is real, the datum stays tied to the mission so the patch and
+  // its surroundings never invert.
+  const centreH = sample((c.west + c.east) / 2, (c.south + c.north) / 2);
+  const offset = centreH == null ? 0 : base - centreH;
+
+  const pos = [];
+  const st = [];
+  const idx = [];
+  for (let j = 0; j <= N; j++) {
+    const v = j / N;
+    const lat = c.north - (c.north - c.south) * v;
+    for (let i = 0; i <= N; i++) {
+      const u = i / N;
+      const lon = c.west + (c.east - c.west) * u;
+      const h = sample(lon, lat);
+      const p = C.Cartesian3.fromDegrees(lon, lat, h == null ? base : h + offset);
+      pos.push(p.x, p.y, p.z);
+      st.push(0.2 + 0.6 * u, 0.2 + 0.6 * v);
+    }
+  }
+  for (let j = 0; j < N; j++) {
+    for (let i = 0; i < N; i++) {
+      const a = j * (N + 1) + i;
+      const b = a + 1;
+      const d = a + N + 1;
+      const e = d + 1;
+      idx.push(a, b, d, b, e, d);
+    }
+  }
+
+  const material = new C.Material({
+    fabric: { type: 'Image', uniforms: { image: 'data/context_bright.png', color: new C.Color(1, 1, 1, 1) } },
+  });
+  const geometry = new C.Geometry({
+    attributes: {
+      position: new C.GeometryAttribute({
+        componentDatatype: C.ComponentDatatype.DOUBLE,
+        componentsPerAttribute: 3,
+        values: new Float64Array(pos),
+      }),
+      st: new C.GeometryAttribute({
+        componentDatatype: C.ComponentDatatype.FLOAT,
+        componentsPerAttribute: 2,
+        values: new Float32Array(st),
+      }),
+    },
+    indices: new Uint32Array(idx),
+    primitiveType: C.PrimitiveType.TRIANGLES,
+    boundingSphere: C.BoundingSphere.fromVertices(pos),
+  });
+
+  state.prims.contextTerrain = new C.Primitive({
+    geometryInstances: new C.GeometryInstance({ geometry }),
+    appearance: new C.MaterialAppearance({ material, flat: true, translucent: false }),
+    asynchronous: false,
+  });
+  collection.add(state.prims.contextTerrain);
+  state.prims.landscapeCenter.show = false;
 }
 
 /* ---------------- wind ---------------- */
@@ -732,11 +827,12 @@ function renderProviders() {
     const item = providers.items && providers.items[key];
     if (!item) continue;
     const suffix = item.simulated ? ' · SIMULASI' : '';
+    const resolution = key === 'context_dem' ? ' · 30 m' : '';
     rows.push(
       `<li class="ld-row">`
       + `<i class="ld-dot" data-status="${item.status}" data-sim="${item.simulated}"></i>`
       + `<span class="ld-name">${item.source_label}</span>`
-      + `<span class="ld-age">${providerAgeLabel(item)}${suffix}</span>`
+      + `<span class="ld-age">${providerAgeLabel(item)}${resolution}${suffix}</span>`
       + `</li>`,
     );
     if (item.attribution) attributions.add(item.attribution);
