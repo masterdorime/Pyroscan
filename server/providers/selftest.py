@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from .adm4 import resolve
 from .base import (Extent, ProviderConfig, ProviderError, ProviderPayload,
                    ProviderResult)
+from .bmkg import BmkgProvider
 from .cache import derive, mission_dir, read_envelope, write_envelope
 from .config import load, redact
 from .geo import bearing_deg, haversine_km, mission_extent
@@ -497,6 +498,54 @@ def adm4_adm3_fallback_only_without_adm4():
     p.write_text(json.dumps(only3), encoding="utf-8")
     m = resolve(_extent(), index_path=p)
     assert m.code == "32.73.15" and m.resolved_by == "adm3_fallback"
+
+
+def _bmkg_raw():
+    import json
+    from pathlib import Path
+    return json.loads(
+        (Path(__file__).parent / "fixtures/bmkg/live.json").read_text(encoding="utf-8")
+    )
+
+
+@case
+def bmkg_parses_fixture_and_picks_nearest_entry():
+    from server.providers import bmkg
+    raw = _bmkg_raw()
+    adm4 = raw["data"][0]["lokasi"]["adm4"]
+    now = datetime(2026, 11, 16, 9, 30, tzinfo=timezone.utc)
+    p = bmkg.parse(raw, adm4, "Asia/Jakarta", now)
+    assert p.data["adm4"] == adm4
+    assert 0 <= p.data["wind_dir_deg"] <= 359
+    assert p.observed_at.endswith("Z")
+    assert p.data["forecast_hours"] >= 0
+    assert p.data["condition"]
+
+
+@case
+def bmkg_rejects_mismatched_adm4():
+    from server.providers import bmkg
+    raw = _bmkg_raw()
+    now = datetime(2026, 11, 16, 9, 30, tzinfo=timezone.utc)
+    try:
+        bmkg.parse(raw, "00.00.00.0000", "Asia/Jakarta", now)
+    except ProviderError as e:
+        assert e.kind == "parse"
+        return
+    raise AssertionError("accepted a response for a different adm4")
+
+
+@case
+def bmkg_unresolved_adm4_is_missing_not_error():
+    import tempfile
+    from pathlib import Path
+    prov = BmkgProvider(index_path=Path(tempfile.mkdtemp()) / "empty.json")
+    try:
+        prov.fetch(_extent(), _cfg())
+    except ProviderError as e:
+        assert e.kind == "missing" and e.detail == "adm4_unresolved"
+        return
+    raise AssertionError("no ProviderError")
 
 
 if __name__ == "__main__":
