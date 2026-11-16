@@ -133,3 +133,60 @@ def crop_dem(tile_path: Path, extent: Extent, size: int = 256) -> dict:
         "bbox": {"west": float(west), "south": float(south),
                  "east": float(east), "north": float(north)},
     }
+
+
+ASSET_NAME = "context_dem.json"
+
+
+class CopernicusDemProvider:
+    """30 m context terrain. One full tile per ring; see spec 7.5."""
+
+    id = "copernicus-dem"
+    key = "context_dem"
+    source_label = "Copernicus DEM"
+    licence = "Copernicus DEM (c) ESA, DLR - free, attribution required"
+    attribution = "Copernicus DEM 30 m, ESA/DLR, via AWS Open Data"
+    ttl_s = 2_592_000
+    fetch_timeout_s = 45
+    allow_inline = False
+    requires: tuple[str, ...] = ()
+
+    def __init__(self, *, tile_fetcher=None, size: int = 256) -> None:
+        self.tile_fetcher = tile_fetcher or fetch_tile
+        self.size = size
+
+    def fetch(self, extent: Extent, cfg) -> "ProviderPayload":
+        import json
+        import shutil
+        import tempfile
+
+        from .base import ProviderPayload
+
+        name = tile_name(*extent.centre)
+        workdir = Path(tempfile.mkdtemp(prefix="pyroscan-dem-"))
+        try:
+            tile = self.tile_fetcher(name, workdir / f"{name}.tif")
+            cropped = crop_dem(tile, extent, size=self.size)
+        except ProviderError:
+            raise
+        except Exception as exc:
+            raise ProviderError("parse", f"DEM crop failed: {exc}") from None
+        finally:
+            shutil.rmtree(workdir, ignore_errors=True)
+
+        blob = json.dumps(cropped["heightmap"], ensure_ascii=False).encode("utf-8")
+        heightmap = cropped["heightmap"]
+        data = {
+            "bbox": cropped["bbox"],
+            "width": heightmap["width"],
+            "height": heightmap["height"],
+            "h_min": heightmap["h_min"],
+            "h_max": heightmap["h_max"],
+            "asset": ASSET_NAME,
+            "source_resolution_m": SOURCE_RESOLUTION_M,
+            "clipped": cropped["clipped"],
+            "nodata_px": cropped["nodata_px"],
+            "source_tile": name,
+        }
+        return ProviderPayload(data, None,
+                               extra={"asset_name": ASSET_NAME, "asset_bytes": blob})

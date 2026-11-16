@@ -185,6 +185,10 @@ class Gateway:
             env = self._envelope(key, adapter, payload.observed_at, payload.data,
                                  fail_count=failures,
                                  fallback_from=(failed_ids[0] if failed_ids else None))
+            extra = getattr(payload, "extra", None) or {}
+            if extra.get("asset_name") and extra.get("asset_bytes") is not None:
+                cache.write_asset(mission_id, extra["asset_name"],
+                                  extra["asset_bytes"], root=self.root)
             write_envelope(mission_id, key, env, root=self.root)
             result = self._result(key, adapter, env,
                                   derive(env, self._ttl(adapter), now=self._now()))

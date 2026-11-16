@@ -33,4 +33,10 @@ def build_registry(cfg: ProviderConfig) -> dict[str, tuple[Provider, ...]]:
     except ImportError:
         pass
 
+    try:
+        from . import copernicus_dem
+        chains["context_dem"] = (copernicus_dem.CopernicusDemProvider(),)
+    except ImportError:
+        pass
+
     return chains

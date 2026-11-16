@@ -334,11 +334,13 @@ def dem_adapter_writes_asset_and_payload():
     from server.providers.cache import read_envelope, mission_dir
 
     tile = Path(tempfile.mkdtemp()) / "tile.tif"
-    e = _extent()
+    e = mission_extent({"west": 107.595, "south": -6.505,
+                        "east": 107.605, "north": -6.495}, 5)
     _synthetic_dem(tile, value=310.0,
                    bounds=cell_bounds(tile_name(*e.centre)))
     prov = CopernicusDemProvider(
-        tile_fetcher=lambda name, dest: dest.write_bytes(tile.read_bytes()) or dest)
+        tile_fetcher=lambda name, dest: (dest.write_bytes(tile.read_bytes()),
+                                         dest)[1])
 
     root = Path(tempfile.mkdtemp())
     gw = _gw_from({"context_dem": (prov,)}, root)
