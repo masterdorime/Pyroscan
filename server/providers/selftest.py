@@ -15,6 +15,7 @@ from .firms import FirmsProvider
 from .geo import bearing_deg, haversine_km, mission_extent
 from .gateway import Gateway
 from .http import get_json, get_text
+from .prefetch import run_prefetch
 
 CASES: dict[str, object] = {}
 
@@ -609,6 +610,19 @@ def firms_missing_key_is_unconfigured():
     r = gw.get("M1", "regional_fires", _extent())
     assert r.status == "unconfigured"
     assert r.configured is False
+
+
+@case
+def prefetch_runs_refresh_for_requested_keys():
+    import tempfile
+    from pathlib import Path
+    root = Path(tempfile.mkdtemp())
+    spy = _Spy()
+    gw = _gw(spy, root)
+    events = run_prefetch(gw, "M1", _extent(), keys=["weather"])
+    assert spy.calls == 1
+    assert events[0]["key"] == "weather"
+    assert events[0]["status"] in ("fresh", "empty", "stale")
 
 
 if __name__ == "__main__":
