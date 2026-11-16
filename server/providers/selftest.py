@@ -10,6 +10,7 @@ from .base import (Extent, ProviderConfig, ProviderError, ProviderPayload,
 from .cache import derive, mission_dir, read_envelope, write_envelope
 from .config import load, redact
 from .geo import bearing_deg, haversine_km, mission_extent
+from .http import get_json, get_text
 
 CASES: dict[str, object] = {}
 
@@ -191,6 +192,50 @@ def status_reason_independent_of_status():
                1200, now=now)
     assert d.status == "stale"
     assert d.reason == "no_usable_scene"
+
+
+class _Resp:
+    def __init__(self, status=200, text="ok"):
+        self.status_code = status
+        self.text = text
+
+
+@case
+def http_network_error_is_typed():
+    def boom(*a, **k):
+        import requests
+        raise requests.ConnectionError("reset")
+    try:
+        get_text("https://x/y", timeout=6, fetcher=boom)
+    except ProviderError as e:
+        assert e.kind == "network"
+        return
+    raise AssertionError("no ProviderError")
+
+
+@case
+def http_status_error_is_typed_and_redacted():
+    def bad(*a, **k):
+        return _Resp(status=500)
+    try:
+        get_text("https://x/csv/SECRET123/VIIRS", timeout=6, secret="SECRET123", fetcher=bad)
+    except ProviderError as e:
+        assert e.kind == "http"
+        assert "SECRET123" not in str(e)
+        return
+    raise AssertionError("no ProviderError")
+
+
+@case
+def http_json_parse_error_is_typed():
+    def html(*a, **k):
+        return _Resp(text="<html>nope</html>")
+    try:
+        get_json("https://x/y", timeout=6, fetcher=html)
+    except ProviderError as e:
+        assert e.kind == "parse"
+        return
+    raise AssertionError("no ProviderError")
 
 
 if __name__ == "__main__":
