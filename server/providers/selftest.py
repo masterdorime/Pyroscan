@@ -5,6 +5,7 @@ import sys
 import traceback
 from datetime import datetime, timezone
 
+from .adm4 import resolve
 from .base import (Extent, ProviderConfig, ProviderError, ProviderPayload,
                    ProviderResult)
 from .cache import derive, mission_dir, read_envelope, write_envelope
@@ -437,6 +438,65 @@ def open_meteo_parses_fixture():
     assert payload.data["forecast_hours"] is None
     assert payload.observed_at.endswith("Z")
     assert 0 <= payload.data["wind_dir_deg"] <= 359
+
+
+_ADM4_INDEX = {"schema": 1, "entries": [
+    {"code": "32.73.15.2001", "name": "Kel. Sukajadi", "level": "adm4",
+     "bbox": [107.58, -6.93, 107.62, -6.90], "tz": "Asia/Jakarta"},
+    {"code": "32.73.15.2002", "name": "Kel. Pasteur", "level": "adm4",
+     "bbox": [107.59, -6.92, 107.61, -6.91], "tz": "Asia/Jakarta"},
+    {"code": "32.73.15", "name": "Kec. Sukajadi", "level": "adm3",
+     "bbox": [107.57, -6.94, 107.63, -6.89], "tz": "Asia/Jakarta"},
+]}
+
+
+def _index(tmpdir):
+    import json
+    from pathlib import Path
+    p = Path(tmpdir) / "adm4.json"
+    p.write_text(json.dumps(_ADM4_INDEX), encoding="utf-8")
+    return p
+
+
+@case
+def adm4_empty_index_resolves_nothing():
+    import json, tempfile
+    from pathlib import Path
+    p = Path(tempfile.mkdtemp()) / "i.json"
+    p.write_text(json.dumps({"schema": 1, "entries": []}), encoding="utf-8")
+    assert resolve(_extent(), index_path=p) is None
+
+
+@case
+def adm4_missing_index_resolves_nothing():
+    import tempfile
+    from pathlib import Path
+    assert resolve(_extent(), index_path=Path(tempfile.mkdtemp()) / "nope.json") is None
+
+
+@case
+def adm4_picks_smallest_containing_bbox():
+    import tempfile
+    m = resolve(_extent(), index_path=_index(tempfile.mkdtemp()))
+    assert m.code == "32.73.15.2002" and m.resolved_by == "index"
+
+
+@case
+def adm4_manual_override_wins():
+    import tempfile
+    m = resolve(_extent(), override="99.99.99.9999", index_path=_index(tempfile.mkdtemp()))
+    assert m.code == "99.99.99.9999" and m.resolved_by == "manual"
+
+
+@case
+def adm4_adm3_fallback_only_without_adm4():
+    import json, tempfile
+    from pathlib import Path
+    p = Path(tempfile.mkdtemp()) / "i.json"
+    only3 = {"schema": 1, "entries": [_ADM4_INDEX["entries"][2]]}
+    p.write_text(json.dumps(only3), encoding="utf-8")
+    m = resolve(_extent(), index_path=p)
+    assert m.code == "32.73.15" and m.resolved_by == "adm3_fallback"
 
 
 if __name__ == "__main__":
