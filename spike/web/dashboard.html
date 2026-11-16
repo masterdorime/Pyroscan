@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PyroScan — Mission Console</title>
+  <script>
+    try {
+      if (localStorage.getItem('pyroscan-theme') === 'obsidian') {
+        document.documentElement.dataset.theme = 'obsidian';
+      }
+    } catch (e) {}
+  </script>
+  <script>window.CESIUM_BASE_URL = 'cesium/';</script>
+  <link rel="stylesheet" href="cesium/Widgets/widgets.css" />
+  <link rel="stylesheet" href="dashboard.css" />
+</head>
+<body>
+  <div id="app" class="mode-context">
+    <header id="topbar">
+      <div class="brand">
+        <svg class="mark" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 2 3 7v10l9 5 9-5V7z" fill="none" stroke="currentColor" stroke-width="1.4"/>
+          <path d="M12 7.2 8 9.6v4.8l4 2.4 4-2.4V9.6z" fill="currentColor"/>
+        </svg>
+        <span class="word">PYROSCAN</span>
+      </div>
+
+      <div class="incident">
+        <span class="kicker">INCIDENT</span>
+        <div class="incident-main">
+          <span id="incident-name">—</span>
+          <span id="mission-id">—</span>
+        </div>
+        <span id="incident-meta">—</span>
+      </div>
+
+      <span class="mode" id="mode">PRE-FIRE</span>
+
+      <div class="status" id="status">
+        <span class="dot"></span><span id="status-text">DONE</span>
+      </div>
+
+      <div class="spacer"></div>
+      <span class="sim-tag">SIMULASI</span>
+      <span class="sync">SYNC <b id="sync">12s</b></span>
+      <span class="fps" id="fps">— ms</span>
+      <div class="theme-menu" id="theme-menu">
+        <button id="theme-trigger" class="theme-trigger" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="Theme: Paper" title="Theme: Paper">
+          <span class="theme-dot" aria-hidden="true"></span>
+          <span id="theme-current" class="theme-current" aria-hidden="true"></span>
+          <span class="theme-caret" aria-hidden="true">▾</span>
+        </button>
+        <div class="theme-popover" id="theme-popover" role="menu" aria-label="Theme" hidden>
+          <button type="button" role="menuitemradio" data-theme-set="paper" aria-checked="true">
+            <span class="theme-dot light" aria-hidden="true"></span>Paper<span class="theme-check" aria-hidden="true">✓</span>
+          </button>
+          <button type="button" role="menuitemradio" data-theme-set="obsidian" aria-checked="false">
+            <span class="theme-dot dark" aria-hidden="true"></span>Obsidian<span class="theme-check" aria-hidden="true">✓</span>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <main id="stage">
+      <div id="cesium"></div>
+
+      <button id="open-recon" class="mode-pill" type="button">
+        <span>Open reconstruction</span><b id="open-recon-area">0.71 ha</b>
+      </button>
+      <button id="close-recon" class="mode-pill" type="button">
+        <span>← Context</span>
+      </button>
+
+      <div id="compass" title="Heading"><span>N</span></div>
+
+      <div id="map-controls">
+        <button id="zoom-in" title="Zoom in">+</button>
+        <button id="zoom-out" title="Zoom out">−</button>
+        <button id="reset" title="Reset view">⌂</button>
+        <button id="toggle-2d" title="Top-down">2D</button>
+      </div>
+
+      <div id="legend">
+        <div class="legend-title">LEGEND</div>
+        <div id="legend-body"></div>
+        <div class="legend-note">Fixture layers are marked SIMULASI.</div>
+        <div class="legend-attrib" id="attrib">Imagery © Esri</div>
+      </div>
+
+      <div id="minimap" title="Fit mission">
+        <img src="data/context_near.jpg" alt="Mission context" />
+        <div id="minimap-box"></div>
+        <span class="minimap-label">MISSION CONTEXT</span>
+      </div>
+
+      <div id="err"></div>
+    </main>
+
+    <aside id="rail">
+      <button id="rail-toggle" title="Collapse panel">›</button>
+      <div id="rail-body">
+        <div id="severity" class="sev-high">
+          <span class="sev-value">HIGH</span>
+          <span class="sev-label">SEVERITY · DRAF</span>
+        </div>
+
+        <section id="incident-card" class="incident-card" aria-label="Incident summary">
+          <div class="incident-card-head">
+            <span class="section-label">Incident</span>
+            <span class="tag" id="ic-mode">PRE_FIRE</span>
+          </div>
+          <dl class="incident-facts">
+            <div><dt>Area</dt><dd id="ic-area">—</dd></div>
+            <div><dt>Photos</dt><dd id="ic-photos">—</dd></div>
+            <div><dt>GSD</dt><dd id="ic-gsd">—</dd></div>
+            <div><dt>Process</dt><dd id="ic-time">—</dd></div>
+            <div><dt>Aligned</dt><dd id="ic-aligned">—</dd></div>
+            <div><dt>Severity</dt><dd id="ic-sev" data-sev="">—</dd></div>
+          </dl>
+        </section>
+
+        <nav id="tabs">
+          <button data-tab="layers" class="active">Layers</button>
+          <button data-tab="mission">Mission</button>
+          <button data-tab="advisory">Advisory</button>
+          <button data-tab="weather">Weather</button>
+        </nav>
+
+        <section id="tab-layers" class="tab active">
+          <div class="card" id="recon-card">
+            <div class="card-head"><h3>Photogrammetry</h3><span class="tag">ODM</span></div>
+            <p class="small">Cached satellite context. The reconstructed patch is hidden until you open it.</p>
+            <dl class="stats">
+              <div><dt>Area</dt><dd id="rc-area">—</dd></div>
+              <div><dt>GSD</dt><dd id="rc-gsd">—</dd></div>
+              <div><dt>Aligned</dt><dd id="rc-aligned">—</dd></div>
+              <div><dt>Surface</dt><dd>3D DSM</dd></div>
+            </dl>
+            <button class="ghost" id="open-recon-card" type="button">Open reconstruction</button>
+          </div>
+
+          <div id="layer-controls">
+            <div class="section-label">Base surface</div>
+            <div class="base-group">
+              <label class="base-opt"><input type="radio" name="base" value="terrain" checked /><i class="sw-terrain"></i>Terrain</label>
+              <label class="base-opt"><input type="radio" name="base" value="elevation" /><i class="sw-depth"></i>Elevation</label>
+              <label class="base-opt"><input type="radio" name="base" value="ortho" /><i class="sw-ortho"></i>Shaded ortho</label>
+              <label class="base-opt"><input type="radio" name="base" value="severity" /><i class="sw-sev"></i>Burn severity</label>
+            </div>
+
+            <div class="section-label">Presets</div>
+            <div class="presets">
+              <button data-preset="terrain">Terrain</button>
+              <button data-preset="fire" class="active">Fire</button>
+              <button data-preset="forecast">Forecast</button>
+              <button data-preset="burn">Burn</button>
+            </div>
+
+            <div class="section-label">Overlays</div>
+            <div class="layer">
+              <input type="checkbox" data-layer="heat" checked />
+              <i class="sw-heat"></i><span>Heat map</span>
+              <input type="range" min="0" max="100" value="45" data-opacity="heat" />
+            </div>
+            <div class="layer">
+              <input type="checkbox" data-layer="wind" />
+              <i class="sw-wind"></i><span>Wind field</span>
+              <input type="range" min="0" max="100" value="35" data-opacity="wind" disabled />
+            </div>
+            <div class="layer">
+              <input type="checkbox" data-layer="prediction" checked />
+              <i class="sw-pred"></i><span>Spread prediction</span>
+              <input type="range" min="0" max="100" value="100" data-opacity="prediction" />
+            </div>
+            <div class="layer no-range">
+              <input type="checkbox" data-layer="hotspots" checked />
+              <i class="sw-hot"></i><span>Hotspots</span>
+            </div>
+            <div class="layer no-range">
+              <input type="checkbox" data-layer="flight" checked />
+              <i class="sw-flight"></i><span>Flight path</span>
+            </div>
+            <p class="panel-note">Base is one surface at a time. Overlays are transparent layers above it. Fixture overlays are marked SIMULASI.</p>
+          </div>
+        </section>
+
+        <section id="tab-mission" class="tab">
+          <div class="card">
+            <div class="card-head"><h3>Incident overview</h3><span class="tag">ODM 3.6.2</span></div>
+            <dl class="stats">
+              <div><dt>Mode</dt><dd id="m-mode">PRE-FIRE</dd></div>
+              <div><dt>Area</dt><dd id="m-area">—</dd></div>
+              <div><dt>Photos</dt><dd id="m-photos">—</dd></div>
+              <div><dt>Aligned</dt><dd id="m-aligned">—</dd></div>
+              <div><dt>Processing</dt><dd id="m-time">—</dd></div>
+              <div><dt>GSD</dt><dd id="m-gsd">—</dd></div>
+            </dl>
+            <p class="mono-note" id="m-window">—</p>
+          </div>
+          <div class="card">
+            <div class="card-head"><h3>Photogrammetry</h3><span class="tag">capture → ortho</span></div>
+            <div id="stepper" class="stepper"></div>
+            <button class="ghost" disabled title="Wired to the pipeline in the next milestone">Open manager</button>
+          </div>
+          <div class="card">
+            <div class="card-head"><h3>Source</h3></div>
+            <p class="small">Brighton Beach sample · 18 images · real ODM output. Basemap cached offline.</p>
+          </div>
+        </section>
+
+        <section id="tab-advisory" class="tab">
+          <div class="card">
+            <div class="card-head"><h3>Advisory</h3><span class="tag warn">DRAF — VERIFIKASI LAPANGAN</span></div>
+            <p class="narrative" id="a-summary">—</p>
+            <ul class="actions" id="a-actions"></ul>
+            <div class="audit" id="a-audit"></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><h3>Constraint</h3></div>
+            <p class="small">Severity comes from the simulation engine. The model writes prose and picks actions from a closed catalog only.</p>
+          </div>
+        </section>
+
+        <section id="tab-weather" class="tab">
+          <div class="card">
+            <div class="card-head"><h3>Wind &amp; fire behavior</h3><span class="tag warn">SIMULASI</span></div>
+            <div class="wind-big">
+              <div class="wind-arrow" id="wind-arrow"><svg viewBox="0 0 34 34" width="34" height="34"><line x1="17" y1="31" x2="17" y2="7" stroke="currentColor" stroke-width="2"/><polygon points="17,2 11,11 23,11" fill="currentColor"/></svg></div>
+              <div>
+                <div class="wind-speed" id="w-speed">—</div>
+                <div class="small" id="w-dir">FROM —</div>
+              </div>
+            </div>
+            <dl class="stats">
+              <div><dt>Temperature</dt><dd id="w-temp">—</dd></div>
+              <div><dt>Humidity</dt><dd id="w-rh">—</dd></div>
+              <div><dt>Data age</dt><dd id="w-age">—</dd></div>
+              <div><dt>Source</dt><dd id="w-source">—</dd></div>
+            </dl>
+          </div>
+          <div class="card">
+            <div class="card-head"><h3>Basemap</h3></div>
+            <p class="small" id="basemap-note">Cached offline basemap.</p>
+          </div>
+        </section>
+      </div>
+    </aside>
+
+    <footer id="strip">
+      <div class="timeline">
+        <button id="play" title="Play forecast">▶</button>
+        <span class="tl-label">FORECAST</span>
+        <div class="tl-track">
+          <input type="range" id="forecast" min="0" max="60" value="0" step="1" />
+          <div class="tl-ticks"><span>now</span><span>+30</span><span>+60</span></div>
+        </div>
+        <span class="tl-now" id="tl-now">+0 min</span>
+      </div>
+      <div class="charts">
+        <div class="chart">
+          <div class="chart-head"><span>Burned area</span><b id="ch-area-val">0.71 ha</b></div>
+          <svg id="chart-area" viewBox="0 0 240 56" preserveAspectRatio="none"></svg>
+        </div>
+        <div class="chart">
+          <div class="chart-head"><span>Rate of spread</span><b id="ch-rate-val">0 m/min</b></div>
+          <svg id="chart-rate" viewBox="0 0 240 56" preserveAspectRatio="none"></svg>
+        </div>
+        <div class="chart">
+          <div class="chart-head"><span id="ch-elev-label">Elevation profile</span><b id="ch-elev-val">—</b></div>
+          <svg id="chart-elev" viewBox="0 0 240 56" preserveAspectRatio="none"></svg>
+        </div>
+        <div class="events">
+          <div class="chart-head"><span>Key events</span></div>
+          <ul id="events"></ul>
+        </div>
+      </div>
+    </footer>
+  </div>
+
+  <script src="cesium/Cesium.js"></script>
+  <script src="dashboard.js"></script>
+</body>
+</html>
+
+
+
+
+

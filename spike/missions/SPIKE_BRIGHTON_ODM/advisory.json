@@ -1,0 +1,23 @@
+{
+  "id": "ADV-SPIKE_BRIGHTON_ODM",
+  "severity": "MEDIUM",
+  "summary_narrative": "Api terdeteksi di 46.84273, -91.99405 pada elevasi 162.71 m dengan lereng 3.5°. Angin 24.5 km/jam dari 225.0°, kelembapan 38%. Model memperkirakan laju rambat 14.6 m/menit ke arah 41.5°, mencapai sekitar 874 m dalam 60 menit.",
+  "action_ids": [
+    "FIREBREAK",
+    "PATROL",
+    "EARLY_WARNING"
+  ],
+  "action_items": [
+    "Bangun firebreak/sekat bakar pada kontur yang ditentukan di depan lidah api.",
+    "Tingkatkan patroli dan pemantauan hotspot di sepanjang jalur prediksi.",
+    "Aktifkan peringatan dini dan koordinasi lintas instansi."
+  ],
+  "model": "template",
+  "seed": 0,
+  "prompt_sha": "template",
+  "dropped_ids": [],
+  "error": null,
+  "generated_at": "2026-11-15T14:45:27+00:00",
+  "draft": true,
+  "simulated": true
+}

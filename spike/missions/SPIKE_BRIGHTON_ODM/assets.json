@@ -1,0 +1,20 @@
+{
+  "stats": {
+    "images_submitted": 18,
+    "images_aligned": 18,
+    "align_ratio": 1.0,
+    "rmse_reprojection_px": 1.0795989521092602,
+    "processing_s": 102,
+    "processing_human": "1.0m:42.0s",
+    "gsd_cm": 1.64,
+    "area_m2": 7060.1
+  },
+  "bounds": {
+    "west": -91.99491934,
+    "south": 46.84206609,
+    "east": -91.99303442,
+    "north": 46.84329274
+  },
+  "h_min": 153.34,
+  "h_max": 174.68
+}

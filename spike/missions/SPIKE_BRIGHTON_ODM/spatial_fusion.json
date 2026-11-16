@@ -1,0 +1,86 @@
+{
+  "schema_version": "1.1.0",
+  "session_id": "SPIKE_BRIGHTON_ODM",
+  "mission_mode": "PRE_FIRE",
+  "timestamp": "2026-11-15T14:45:27+00:00",
+  "area_coverage_m2": 19598.3,
+  "photogrammetry": {
+    "images_submitted": 18,
+    "images_aligned": 18,
+    "align_ratio": 1.0,
+    "rmse_reprojection_px": 1.0795989521092602,
+    "odm_task_id": "c16574ae-dfd7-4ea2-a341-8c942fabf484"
+  },
+  "hotspots": [
+    {
+      "id": "SPOT_01",
+      "lat": 46.842728481,
+      "lon": -91.9940522768,
+      "elevation_m": 162.71,
+      "slope_deg": 3.5,
+      "aspect_deg": 117.7,
+      "fire_confidence": 0.92,
+      "smoke_confidence": 0.85
+    },
+    {
+      "id": "SPOT_02",
+      "lat": 46.842642615500004,
+      "lon": -91.993882634,
+      "elevation_m": 161.79,
+      "slope_deg": 3.6,
+      "aspect_deg": 205.4,
+      "fire_confidence": 0.81,
+      "smoke_confidence": 0.72
+    },
+    {
+      "id": "SPOT_03",
+      "lat": 46.84255675,
+      "lon": -91.9937695388,
+      "elevation_m": 161.26,
+      "slope_deg": 0.8,
+      "aspect_deg": 180.0,
+      "fire_confidence": 0.67,
+      "smoke_confidence": 0.61
+    }
+  ],
+  "environmental_data": {
+    "wind_speed_kmh": 24.5,
+    "wind_direction_deg": 225.0,
+    "humidity_pct": 38,
+    "temperature_c": 31.2,
+    "source": "fixture (Open-Meteo shape)",
+    "observed_at": "2026-11-15T14:12:56.902322+00:00",
+    "age_minutes": 32
+  },
+  "wind_direction_convention": "FROM",
+  "spread_prediction": {
+    "predicted_lat": 46.84860490544729,
+    "predicted_lon": -91.98644456053283,
+    "estimated_arrival_minutes": 60,
+    "risk_level": "MEDIUM",
+    "slope_weight": 0.6,
+    "wind_weight": 0.4,
+    "rate_m_min": 14.56,
+    "bearing_deg": 41.5
+  },
+  "spread_prediction_alt": [
+    {
+      "predicted_lat": 46.84566669322364,
+      "predicted_lon": -91.99024841866643,
+      "estimated_arrival_minutes": 30,
+      "risk_level": "MEDIUM"
+    },
+    {
+      "predicted_lat": 46.84565057225043,
+      "predicted_lon": -91.98966011586238,
+      "estimated_arrival_minutes": 30,
+      "risk_level": "MEDIUM"
+    },
+    {
+      "predicted_lat": 46.84542025474111,
+      "predicted_lon": -91.98966585291916,
+      "estimated_arrival_minutes": 30,
+      "risk_level": "MEDIUM"
+    }
+  ]
+}

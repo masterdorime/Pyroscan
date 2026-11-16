@@ -1,0 +1,2387 @@
+<!DOCTYPE html>
+<html lang="id" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PyroScan - 3D Interactive Drone Payload & Simulation Environment</title>
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            obsidian: '#0a0b10',
+            charcoal: '#12141d',
+            'charcoal-card': '#1a1d2b',
+            amber: {
+              DEFAULT: '#e5a954',
+              glow: '#ffc875',
+            },
+            flame: '#e55338',
+            silver: '#a0a5b5',
+            damper: '#00b0ff',
+            nitro: '#1a38b8'
+          },
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            mono: ['Fira Code', 'JetBrains Mono', 'monospace']
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- Three.js & OrbitControls -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+
+  <style>
+    body {
+      background-color: #0a0b10;
+      color: #f3f4f6;
+      font-family: 'Inter', sans-serif;
+      overflow: hidden;
+      user-select: none;
+    }
+    canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      outline: none;
+    }
+    /* Glassmorphism styling */
+    .glass-panel {
+      background: rgba(18, 20, 29, 0.85);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(229, 169, 84, 0.25);
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7);
+    }
+    .glass-card {
+      background: rgba(26, 29, 43, 0.75);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .glass-card:hover {
+      border-color: rgba(229, 169, 84, 0.45);
+    }
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 5px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(10, 11, 16, 0.5);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(229, 169, 84, 0.4);
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(229, 169, 84, 0.8);
+    }
+  </style>
+</head>
+<body class="relative w-screen h-screen overflow-hidden text-sm">
+
+  <!-- 3D Canvas Engine -->
+  <canvas id="three-canvas" class="absolute inset-0 z-0"></canvas>
+
+  <!-- Top Navigation Header -->
+  <header class="absolute top-4 left-4 right-4 z-20 flex flex-wrap items-center justify-between gap-4 pointer-events-auto">
+    <!-- Brand Title Badge -->
+    <div class="glass-panel px-5 py-3 rounded-2xl flex items-center gap-3 border border-amber/40 shadow-xl">
+      <div class="relative flex items-center justify-center w-10 h-10 rounded-xl bg-flame/20 border border-flame/50 text-flame shadow-inner">
+        <svg class="w-6 h-6 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z"/>
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.879 16.121A3 3 0 1012.015 11L11 14H9c0 .768.293 1.536.879 2.121z"/>
+        </svg>
+      </div>
+      <div>
+        <h1 class="text-base font-extrabold tracking-wider text-white flex items-center gap-2">
+          PYROSCAN <span class="text-[10px] px-2 py-0.5 rounded-full bg-amber/20 text-amber font-mono font-bold border border-amber/40">3D PAYLOAD STUDIO</span>
+        </h1>
+        <p class="text-xs text-silver">Simulasi & Inspeksi Modul Drone Kebakaran Hutan</p>
+      </div>
+    </div>
+
+    <!-- Main Navigation Tabs -->
+    <nav class="glass-panel p-1.5 rounded-2xl flex items-center gap-1.5 shadow-xl">
+      <button id="tab-sim" onclick="setActiveTab('sim')" class="tab-btn px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 bg-amber text-obsidian shadow-lg shadow-amber/20">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        Simulasi & Mapping 3D
+      </button>
+      <button id="tab-inspect" onclick="setActiveTab('inspect')" class="tab-btn px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 text-silver hover:text-white hover:bg-white/5">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+        Katalog & Inspeksi Komponen
+      </button>
+      <button id="tab-telemetry" onclick="setActiveTab('telemetry')" class="tab-btn px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 text-silver hover:text-white hover:bg-white/5">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+        Inspektor Telemetri (LoRa)
+      </button>
+    </nav>
+
+    <!-- Camera Controls & View Presets -->
+    <div class="glass-panel p-1.5 rounded-2xl flex items-center gap-1">
+      <button onclick="setCameraView('free')" title="Perspektif Bebas Studio" class="cam-btn px-3 py-2 rounded-xl text-xs font-medium text-silver hover:text-amber hover:bg-white/5 transition flex items-center gap-1.5">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+        Free Orbit
+      </button>
+      <button onclick="setCameraView('payload')" title="Fokus Payload Under-Belly" class="cam-btn px-3 py-2 rounded-xl text-xs font-medium text-silver hover:text-amber hover:bg-white/5 transition flex items-center gap-1.5">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+        Payload Focus
+      </button>
+      <button onclick="setCameraView('posko')" title="Fokus Posko Darat & Helipad" class="cam-btn px-3 py-2 rounded-xl text-xs font-medium text-amber hover:bg-white/5 transition flex items-center gap-1.5">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 00-1-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+        Posko Camp
+      </button>
+      <button onclick="setCameraView('laptop')" title="Zoom Layar Laptop Lenovo LOQ" class="cam-btn px-3 py-2 rounded-xl text-xs font-medium text-emerald-400 hover:bg-white/5 transition flex items-center gap-1.5">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+        Laptop Screen
+      </button>
+      <button onclick="setCameraView('follow')" title="Ikuti Posisi Drone" class="cam-btn px-3 py-2 rounded-xl text-xs font-medium text-silver hover:text-amber hover:bg-white/5 transition flex items-center gap-1.5">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 9l3 3m0 0l-3 3m3-3H8m13 0a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        Follow Drone
+      </button>
+      <button onclick="setCameraView('nadir')" title="Tampilan Nadir Top-Down" class="cam-btn px-3 py-2 rounded-xl text-xs font-medium text-silver hover:text-amber hover:bg-white/5 transition flex items-center gap-1.5">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"/></svg>
+        Nadir POV
+      </button>
+    </div>
+  </header>
+
+  <!-- PANEL 1: SIMULATION & MAPPING PANEL -->
+  <main id="panel-sim" class="tab-content absolute inset-0 z-10 pointer-events-none p-4 pt-24 flex justify-between">
+    <!-- Left Floating Controls -->
+    <div class="glass-panel w-80 p-5 rounded-3xl pointer-events-auto flex flex-col gap-4 max-h-[calc(100vh-7rem)] overflow-y-auto">
+      <div class="flex items-center justify-between border-b border-white/10 pb-3">
+        <h2 class="font-extrabold text-white text-sm tracking-wide">KONTROL PENERBANGAN</h2>
+        <span id="sim-status-badge" class="px-2.5 py-1 rounded-full bg-amber/20 text-amber border border-amber/40 text-[11px] font-mono font-bold flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full bg-amber"></span> READY
+        </span>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="flex flex-col gap-2">
+        <button id="btn-toggle-sim" onclick="toggleSimulation()" class="w-full py-3 px-4 rounded-xl bg-flame hover:bg-flame/90 text-white font-extrabold text-sm transition flex items-center justify-center gap-2 shadow-lg shadow-flame/40 cursor-pointer">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          Mulai Simulasi Flight
+        </button>
+
+        <button id="btn-landing-sim" onclick="triggerLandingSequence()" class="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 cursor-pointer">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"/></svg>
+          Simulasi Landing & Sync Posko
+        </button>
+
+        <div class="flex items-center justify-between gap-2 pt-1">
+          <button onclick="resetSimulation()" class="flex-1 py-2 px-3 rounded-xl bg-white/10 hover:bg-white/20 text-white font-semibold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+            Reset Waypoint
+          </button>
+        </div>
+      </div>
+
+      <!-- Flight Speed Controls -->
+      <div class="border-t border-white/10 pt-3">
+        <label class="text-xs text-silver font-semibold flex justify-between mb-2">
+          Kecepatan Terbang
+          <span id="sim-speed-val" class="text-amber font-mono">1.0x (8.4 m/s)</span>
+        </label>
+        <div class="grid grid-cols-3 gap-1.5">
+          <button onclick="setSpeedMultiplier(1.0)" class="speed-btn py-1.5 rounded-lg bg-amber text-obsidian font-bold text-xs">1.0x</button>
+          <button onclick="setSpeedMultiplier(2.0)" class="speed-btn py-1.5 rounded-lg bg-white/10 text-white font-bold text-xs hover:bg-white/20">2.0x</button>
+          <button onclick="setSpeedMultiplier(5.0)" class="speed-btn py-1.5 rounded-lg bg-white/10 text-white font-bold text-xs hover:bg-white/20">5.0x</button>
+        </div>
+      </div>
+
+      <!-- Layer Visual Toggles -->
+      <div class="border-t border-white/10 pt-3 flex flex-col gap-2">
+        <button onclick="toggleExplodedView(!state.isExploded)" class="w-full py-2.5 px-4 rounded-xl bg-amber/20 hover:bg-amber/30 text-amber font-bold text-xs transition border border-amber/40 flex items-center justify-center gap-2 cursor-pointer">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>
+          Toggle Mode Exploded View
+        </button>
+      </div>
+    </div>
+
+    <!-- Telemetry & Photogrammetry HUD Panel -->
+    <div class="glass-panel w-96 p-5 rounded-3xl pointer-events-auto flex flex-col justify-between max-h-[calc(100vh-7rem)] overflow-y-auto">
+      <div class="flex flex-col gap-4">
+        <div class="flex justify-between items-center border-b border-white/10 pb-3">
+          <h2 class="font-extrabold text-white text-sm tracking-wide flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+            LIVE TELEMETRI FLIGHT
+          </h2>
+          <span id="hud-photos" class="px-2.5 py-1 rounded-full bg-amber/20 text-amber font-mono text-xs font-bold border border-amber/40">0 Fotos</span>
+        </div>
+
+        <!-- Telemetry Data Grid -->
+        <div class="grid grid-cols-2 gap-2 text-xs">
+          <div class="glass-card p-3 rounded-2xl">
+            <span class="text-silver block text-[10px]">LATITUDE (WGS84)</span>
+            <strong id="hud-lat" class="text-white font-mono font-bold text-sm">-6.917524</strong>
+          </div>
+          <div class="glass-card p-3 rounded-2xl">
+            <span class="text-silver block text-[10px]">LONGITUDE (WGS84)</span>
+            <strong id="hud-lon" class="text-white font-mono font-bold text-sm">107.619108</strong>
+          </div>
+          <div class="glass-card p-3 rounded-2xl">
+            <span class="text-silver block text-[10px]">ALTITUDE (AGL)</span>
+            <strong id="hud-alt" class="text-amber font-mono font-bold text-sm">49.0 m</strong>
+          </div>
+          <div class="glass-card p-3 rounded-2xl">
+            <span class="text-silver block text-[10px]">YOLO DETEKSI API</span>
+            <strong id="hud-confidence" class="text-emerald-400 font-mono font-bold text-sm">92.4% (CONF)</strong>
+          </div>
+        </div>
+
+        <!-- Confidence Progress Bar -->
+        <div class="space-y-1">
+          <div class="flex justify-between text-[11px]">
+            <span class="text-silver">AI Fire/Smoke Threshold</span>
+            <span class="text-emerald-400 font-bold font-mono">PASS</span>
+          </div>
+          <div class="w-full bg-white/10 h-2 rounded-full overflow-hidden">
+            <div id="hud-bar" class="bg-gradient-to-r from-amber to-flame h-full transition-all duration-300" style="width: 92.4%;"></div>
+          </div>
+        </div>
+
+        <!-- Realtime Mission Log Console -->
+        <div class="border-t border-white/10 pt-3">
+          <h3 class="text-xs font-bold text-silver mb-2 flex items-center justify-between">
+            MISSION EVENT LOG STREAM
+            <span class="text-[10px] text-amber font-mono">100% OFFLINE</span>
+          </h3>
+          <div id="ai-log" class="glass-card p-3 rounded-2xl font-mono text-[11px] space-y-1.5 max-h-48 overflow-y-auto leading-tight text-white/80">
+            <p class="text-emerald-400">[00:00] PyroScan Ready. Hardware initialized.</p>
+            <p class="text-silver">[00:00] Pre-programmed Lawnmower Path loaded (14 Waypoints).</p>
+            <p class="text-amber">[00:00] Status: READY. Tekan "Mulai Simulasi Flight" untuk terbang.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- PANEL 2: COMPONENT INSPECTION & CATALOG PANEL -->
+  <main id="panel-inspect" class="tab-content absolute inset-0 z-10 pointer-events-none p-4 pt-24 hidden flex justify-between">
+    <!-- Left Component Selector List -->
+    <div class="glass-panel w-80 p-5 rounded-3xl pointer-events-auto flex flex-col gap-3 max-h-[calc(100vh-7rem)] overflow-y-auto">
+      <div class="border-b border-white/10 pb-3">
+        <h2 class="font-extrabold text-white text-sm tracking-wide">KATALOG KOMPONEN</h2>
+        <p class="text-xs text-silver mt-0.5">Pilih bagian modul untuk inspeksi 3D</p>
+      </div>
+
+      <div class="flex flex-col gap-2">
+        <button onclick="selectComponent('phone')" class="comp-btn w-full p-3 rounded-2xl bg-white/10 hover:bg-amber/20 text-white hover:text-amber font-semibold text-xs text-left transition flex items-center gap-3 border border-white/10 cursor-pointer">
+          <div class="w-8 h-8 rounded-xl bg-amber/20 text-amber flex items-center justify-center font-bold">1</div>
+          <div>
+            <div class="font-bold">Realme 3 Pro</div>
+            <div class="text-[10px] text-silver">Edge AI & Camera Core</div>
+          </div>
+        </button>
+
+        <button onclick="selectComponent('mount')" class="comp-btn w-full p-3 rounded-2xl bg-white/10 hover:bg-amber/20 text-white hover:text-amber font-semibold text-xs text-left transition flex items-center gap-3 border border-white/10 cursor-pointer">
+          <div class="w-8 h-8 rounded-xl bg-flame/20 text-flame flex items-center justify-center font-bold">2</div>
+          <div>
+            <div class="font-bold">Baki Mount PETG</div>
+            <div class="text-[10px] text-silver">3D Print Chassis Nadir</div>
+          </div>
+        </button>
+
+        <button onclick="selectComponent('dampers')" class="comp-btn w-full p-3 rounded-2xl bg-white/10 hover:bg-amber/20 text-white hover:text-amber font-semibold text-xs text-left transition flex items-center gap-3 border border-white/10 cursor-pointer">
+          <div class="w-8 h-8 rounded-xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center font-bold">3</div>
+          <div>
+            <div class="font-bold">Rubber Dampers</div>
+            <div class="text-[10px] text-silver">4x Bola Peredam Getaran</div>
+          </div>
+        </button>
+
+        <button onclick="selectComponent('lora')" class="comp-btn w-full p-3 rounded-2xl bg-white/10 hover:bg-amber/20 text-white hover:text-amber font-semibold text-xs text-left transition flex items-center gap-3 border border-white/10 cursor-pointer">
+          <div class="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold">4</div>
+          <div>
+            <div class="font-bold">ESP32 + LoRa SX1262</div>
+            <div class="text-[10px] text-silver">Pemancar Radio LoRa · DG-02</div>
+          </div>
+        </button>
+
+        <button onclick="selectComponent('drone')" class="comp-btn w-full p-3 rounded-2xl bg-white/10 hover:bg-amber/20 text-white hover:text-amber font-semibold text-xs text-left transition flex items-center gap-3 border border-white/10 cursor-pointer">
+          <div class="w-8 h-8 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center font-bold">5</div>
+          <div>
+            <div class="font-bold">Frame Drone CF</div>
+            <div class="text-[10px] text-silver">Carbon Fiber Quadcopter</div>
+          </div>
+        </button>
+      </div>
+
+      <div class="border-t border-white/10 pt-3">
+        <button onclick="toggleExplodedView(!state.isExploded)" class="w-full py-2.5 px-4 rounded-xl bg-amber/20 hover:bg-amber/30 text-amber font-bold text-xs transition border border-amber/40 flex items-center justify-center gap-2 cursor-pointer">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>
+          Toggle Mode Exploded View
+        </button>
+      </div>
+    </div>
+
+    <!-- Active Component Specification Card -->
+    <div class="glass-panel w-96 p-6 rounded-3xl pointer-events-auto flex flex-col justify-between max-h-[calc(100vh-7rem)] overflow-y-auto">
+      <div>
+        <div class="flex justify-between items-start border-b border-white/10 pb-3 mb-4">
+          <div>
+            <h2 id="spec-title" class="text-base font-extrabold text-white">Realme 3 Pro (Smartphone Core)</h2>
+            <p id="spec-subtitle" class="text-xs text-amber font-mono mt-0.5">Modul Utama Edge AI & Geotag Capture</p>
+          </div>
+          <span id="spec-weight" class="px-2.5 py-1 rounded-full bg-white/10 text-white font-mono text-xs">Net: 155g</span>
+        </div>
+
+        <ul id="spec-list" class="space-y-2.5 text-xs">
+          <li class="flex justify-between"><span class="text-white/60">Kamera Utama:</span> <strong class="text-white">Sony IMX519 16MP (f/1.7)</strong></li>
+          <li class="flex justify-between"><span class="text-white/60">SoC / Processor:</span> <strong class="text-white">Snapdragon 710 + Hexagon DSP</strong></li>
+          <li class="flex justify-between"><span class="text-white/60">AI Acceleration:</span> <strong class="text-white">TFLite INT8 · fallback chain</strong></li>
+          <li class="flex justify-between"><span class="text-white/60">Posisi Orientasi:</span> <strong class="text-white">Horizontal Top-Down (Nadir)</strong></li>
+          <li class="flex justify-between"><span class="text-white/60">Fungsi Utama:</span> <strong class="text-white">Geotagging EXIF & AI Fire Detection</strong></li>
+        </ul>
+
+        <div class="mt-5 p-3 rounded-2xl bg-white/5 border border-white/10">
+          <p id="spec-desc" class="text-xs text-silver leading-relaxed">
+            Smartphone bekas dipasang telentang mendatar dengan lensa Sony IMX519 menghadap tegak lurus ke tanah melalui celah baki mount.
+          </p>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- PANEL 3: LORA TELEMETRY INSPECTOR -->
+  <main id="panel-telemetry" class="tab-content absolute inset-0 z-10 pointer-events-none p-4 pt-24 hidden flex justify-between">
+    <!-- LoRa Binary Struct Inspector -->
+    <div class="glass-panel w-96 p-5 rounded-3xl pointer-events-auto flex flex-col gap-4">
+      <h2 class="font-extrabold text-white text-sm tracking-wide border-b border-white/10 pb-3 flex items-center gap-2">
+        <svg class="w-4 h-4 text-amber" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+        LORA BINARY STRUCT (16 BYTES)
+      </h2>
+
+      <div class="space-y-2 font-mono text-xs">
+        <div class="glass-card p-2.5 rounded-xl flex justify-between items-center">
+          <span class="text-silver">Byte 0..3 (Float32):</span>
+          <span class="text-amber">latitude (-6.917524)</span>
+        </div>
+        <div class="glass-card p-2.5 rounded-xl flex justify-between items-center">
+          <span class="text-silver">Byte 4..7 (Float32):</span>
+          <span class="text-amber">longitude (107.619108)</span>
+        </div>
+        <div class="glass-card p-2.5 rounded-xl flex justify-between items-center">
+          <span class="text-silver">Byte 8..9 (Int16):</span>
+          <span class="text-cyan-400">altitude (40 m)</span>
+        </div>
+        <div class="glass-card p-2.5 rounded-xl flex justify-between items-center">
+          <span class="text-silver">Byte 10 (UInt8):</span>
+          <span class="text-emerald-400">fire_conf (92%)</span>
+        </div>
+        <div class="glass-card p-2.5 rounded-xl flex justify-between items-center">
+          <span class="text-silver">Byte 11 (UInt8):</span>
+          <span class="text-emerald-400">smoke_conf (85%)</span>
+        </div>
+        <div class="glass-card p-2.5 rounded-xl flex justify-between items-center">
+          <span class="text-silver">Byte 12..15 (UInt32):</span>
+          <span class="text-silver">timestamp (Epoch)</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Live LoRa Hex Stream Display -->
+    <div class="glass-panel w-96 p-5 rounded-3xl pointer-events-auto flex flex-col gap-3">
+      <h2 class="font-extrabold text-amber font-mono text-xs tracking-wider border-b border-white/10 pb-3 flex justify-between items-center">
+        REALTIME HEX RECEIVER STREAM
+        <span class="text-[10px] text-emerald-400">LoRa · DG-02</span>
+      </h2>
+      
+      <div class="glass-card p-3 rounded-2xl font-mono text-xs text-emerald-400 break-all space-y-2">
+        <p>[RX PKT 16-BYTES OK]</p>
+
+        <p class="text-white/80">HEX: <span class="text-amber">C1 D4 BD C1 42 DF DB 42 28 00 5C 55 67 2B 29 67</span></p>
+
+        <p class="text-xs text-silver">
+          Lat: <span id="hex-lat" class="text-white font-bold">-6.917524</span> | 
+          Lon: <span id="hex-lon" class="text-white font-bold">107.619108</span>
+        </p>
+
+        <p class="text-xs text-silver">
+          Alt: <span id="hex-alt" class="text-amber font-bold">40.0 m</span> | 
+          Fire Conf: <span id="hex-fire" class="text-emerald-400 font-bold">92.4%</span>
+        </p>
+      </div>
+    </div>
+  </main>
+
+  <!-- Status aset 3D -->
+  <div id="asset-status" class="absolute bottom-4 right-4 z-20 glass-card px-3 py-2 rounded-xl text-[11px] font-mono text-silver flex items-center gap-2 shadow-xl">
+    <span id="asset-dot" class="w-2 h-2 rounded-full bg-amber animate-pulse"></span>
+    <span id="asset-text">MEMUAT ASET 3D…</span>
+  </div>
+
+  <!-- Aset 3D tertanam (base64 GLB): file:// memblokir fetch .glb dari disk -->
+  <script>
+    window.PYRO_ASSETS = {
+      drone: "__B64_DRONE__",
+      phone: "__B64_PHONE__",
+      esp32: "__B64_ESP32__"
+    };
+  </script>
+
+  <!-- Interactive 3D Canvas Engine JavaScript -->
+  <script>
+    // Permukaan error yang terlihat: tanpa ini kegagalan init hanya muncul
+    // sebagai canvas hitam dan pesan di console yang tidak dibuka siapa pun.
+    window.addEventListener('error', (event) => {
+      const label = document.getElementById('asset-text');
+      if (!label) return;
+      label.textContent = 'ERROR: ' + String(event.message || event.error || 'unknown').slice(0, 110);
+      const dot = document.getElementById('asset-dot');
+      if (dot) dot.className = 'w-2 h-2 rounded-full bg-flame';
+    });
+    window.addEventListener('unhandledrejection', (event) => {
+      const label = document.getElementById('asset-text');
+      if (!label) return;
+      label.textContent = 'ERROR: ' + String((event.reason && event.reason.message) || event.reason).slice(0, 110);
+    });
+
+    // Safe Helper functions to prevent null property setting errors
+    function setSafeText(id, val) {
+      const el = document.getElementById(id);
+      if (el) el.innerText = val;
+    }
+    function setSafeHTML(id, html) {
+      const el = document.getElementById(id);
+      if (el) el.innerHTML = html;
+    }
+    function setSafeClass(id, className) {
+      const el = document.getElementById(id);
+      if (el) el.className = className;
+    }
+    function setSafeStyleWidth(id, width) {
+      const el = document.getElementById(id);
+      if (el) el.style.width = width;
+    }
+
+    // Global Application State
+    const state = {
+      activeTab: 'sim',
+      selectedComp: 'phone',
+      camView: 'free',
+      isSimRunning: false,
+      simStage: 'IDLE', // IDLE, MAPPING, LANDING, SYNCING, RECONSTRUCTING, FINISHED
+      syncProgress: 0,
+      simSpeed: 1.0,
+      isExploded: false,
+      showScanBeam: true,
+      showVector: true,
+      showLoraWaves: true,
+      showFlightPath: true,
+      photoCount: 0,
+      dronePos: new THREE.Vector3(-18, 9, -14),
+      lastPhotoPos: new THREE.Vector3(-18, 9, -14),
+      landingPos: new THREE.Vector3(-20.5, 1.25, 20),
+      photoIntervalDist: 2.2,
+      waypoints: [
+        new THREE.Vector3(-18, 9, -14),
+        new THREE.Vector3(18, 9, -14),
+        new THREE.Vector3(18, 9, -9.5),
+        new THREE.Vector3(-18, 9, -9.5),
+        new THREE.Vector3(-18, 9, -5),
+        new THREE.Vector3(18, 9, -5),
+        new THREE.Vector3(18, 9, -0.5),
+        new THREE.Vector3(-18, 9, -0.5),
+        new THREE.Vector3(-18, 9, 4),
+        new THREE.Vector3(18, 9, 4),
+        new THREE.Vector3(18, 9, 8.5),
+        new THREE.Vector3(-18, 9, 8.5),
+        new THREE.Vector3(-18, 9, 13),
+        new THREE.Vector3(18, 9, 13)
+      ],
+      currentWayIndex: 0,
+      confidenceScore: 92.4
+    };
+
+    // Laptop Screen Dynamic Texture Canvas
+    let laptopCanvas, laptopCtx, laptopTexture, laptopDisplayMat;
+
+    function createLaptopScreenTexture() {
+      laptopCanvas = document.createElement('canvas');
+      laptopCanvas.width = 512;
+      laptopCanvas.height = 307;
+      laptopCtx = laptopCanvas.getContext('2d');
+      laptopTexture = new THREE.CanvasTexture(laptopCanvas);
+      laptopDisplayMat = new THREE.MeshBasicMaterial({ map: laptopTexture });
+      updateLaptopScreen('STANDBY');
+    }
+
+    function updateLaptopScreen(stage, percent = 0) {
+      if (!laptopCtx) return;
+      const ctx = laptopCtx;
+      ctx.fillStyle = '#0a0b10';
+      ctx.fillRect(0, 0, 512, 307);
+
+      // Top Dashboard Bar
+      ctx.fillStyle = '#12141d';
+      ctx.fillRect(0, 0, 512, 35);
+      ctx.fillStyle = '#e5a954';
+      ctx.font = 'bold 14px sans-serif';
+      ctx.fillText('PYROSCAN GROUND STATION (Lenovo LOQ RTX 4060)', 15, 23);
+
+      ctx.fillStyle = '#10b981';
+      ctx.font = 'bold 12px monospace';
+      ctx.fillText('NVIDIA CUDA: ACTIVE', 360, 23);
+
+      if (stage === 'STANDBY') {
+        ctx.fillStyle = '#a0a5b5';
+        ctx.font = '14px sans-serif';
+        ctx.fillText('Status: Menunggu Drone Mendarat & Bulk Sync...', 30, 80);
+        ctx.fillText('Tekan "Simulasi Landing & Sync Posko" di UI', 30, 110);
+        ctx.fillStyle = '#e5a954';
+        ctx.fillText('• Wi-Fi 5GHz AP: READY', 30, 160);
+        ctx.fillText('• Local Ollama Qwen2.5-VL-7B: ONLINE', 30, 185);
+        ctx.fillText('• NodeODM CUDA Processing Engine: IDLE', 30, 210);
+      } else if (stage === 'LANDING') {
+        ctx.fillStyle = '#00e5ff';
+        ctx.font = 'bold 16px sans-serif';
+        ctx.fillText('DRONE APPROACHING POSKO LANDING PAD...', 30, 80);
+        ctx.fillStyle = '#1a1d2b';
+        ctx.fillRect(30, 105, 452, 24);
+        ctx.fillStyle = '#00e5ff';
+        ctx.fillRect(30, 105, (percent / 100) * 452, 24);
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 12px monospace';
+        ctx.fillText(`Pendaratan Helipad: ${Math.round(percent)}%`, 45, 122);
+      } else if (stage === 'SYNCING') {
+        ctx.fillStyle = '#e5a954';
+        ctx.font = 'bold 16px sans-serif';
+        ctx.fillText('Wi-Fi 5GHz BULK PHOTO TRANSFER (Realme 3 Pro)', 30, 70);
+        
+        ctx.fillStyle = '#1a1d2b';
+        ctx.fillRect(30, 95, 452, 24);
+        ctx.fillStyle = '#00b0ff';
+        ctx.fillRect(30, 95, (percent / 100) * 452, 24);
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 12px monospace';
+        ctx.fillText(`Memindahkan ${state.photoCount || 24} Foto EXIF 16MP: ${Math.round(percent)}%`, 45, 112);
+
+        ctx.fillStyle = '#a0a5b5';
+        ctx.font = '12px monospace';
+        ctx.fillText('Connecting USB-C / Wi-Fi AP... OK', 30, 155);
+        ctx.fillText('EXIF GPS Metadata Extraction... OK', 30, 180);
+        ctx.fillText('Image Integrity Verification... OK', 30, 205);
+      } else if (stage === 'RECONSTRUCTING') {
+        ctx.fillStyle = '#e55338';
+        ctx.font = 'bold 16px sans-serif';
+        ctx.fillText('NodeODM CUDA 3D PHOTOGRAMMETRY RECONSTRUCTION', 30, 70);
+        
+        ctx.fillStyle = '#1a1d2b';
+        ctx.fillRect(30, 95, 452, 24);
+        ctx.fillStyle = '#e55338';
+        ctx.fillRect(30, 95, (percent / 100) * 452, 24);
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 12px monospace';
+        ctx.fillText(`Processing 3D Mesh & DEM (.tif): ${Math.round(percent)}%`, 45, 112);
+
+        ctx.fillStyle = '#a0a5b5';
+        ctx.font = '12px monospace';
+        ctx.fillText('GPU Acceleration: RTX 4060 CUDA Cores Active', 30, 155);
+        ctx.fillText('YOLOv8 Hotspot Coordinates Matched with DEM', 30, 180);
+        ctx.fillText('Ollama Qwen2.5-VL-7B Generating Evacuation Report...', 30, 205);
+      } else if (stage === 'FINISHED') {
+        ctx.fillStyle = '#10b981';
+        ctx.font = 'bold 16px sans-serif';
+        ctx.fillText('3D MAP & ADVISORY REPORT GENERATED!', 30, 65);
+
+        ctx.fillStyle = '#1a38b8';
+        ctx.fillRect(30, 85, 210, 180);
+        ctx.fillStyle = '#ff5722';
+        ctx.beginPath();
+        ctx.arc(135, 175, 25, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 11px sans-serif';
+        ctx.fillText('Orthomosaic DEM 3D', 40, 105);
+        ctx.fillText('[ HOTSPOT DETECTED ]', 40, 250);
+
+        ctx.fillStyle = '#1a1d2b';
+        ctx.fillRect(250, 85, 232, 180);
+        ctx.fillStyle = '#e5a954';
+        ctx.font = 'bold 12px sans-serif';
+        ctx.fillText('LAPORAN STRATEGI EVAKUASI', 260, 105);
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '10px sans-serif';
+        ctx.fillText('• Ancaman: TINGKAT TINGGI (32° Slope)', 260, 130);
+        ctx.fillText('• Perambatan: 45 Mins to North-East', 260, 150);
+        ctx.fillText('• Saran SAR: Evakuasi sektor U-T', 260, 170);
+        ctx.fillText('• Buat firebreak di kontur 800m', 260, 190);
+        ctx.fillStyle = '#10b981';
+        ctx.font = 'bold 11px monospace';
+        ctx.fillText('STATUS: READY FOR COMMAND POSKO', 260, 240);
+      }
+
+      laptopTexture.needsUpdate = true;
+    }
+
+    const geotagMarkers = [];
+
+    const compSpecs = {
+      phone: {
+        title: 'Realme 3 Pro (Smartphone Core)',
+        subtitle: 'Modul Utama Edge AI & Geotag Capture',
+        weight: 'Net: 155g',
+        list: [
+          ['Kamera Utama:', 'Sony IMX519 16MP (f/1.7)'],
+          ['SoC / Processor:', 'Snapdragon 710 + Hexagon DSP'],
+          ['AI Acceleration:', 'TFLite INT8 · fallback chain'],
+          ['Posisi Orientasi:', 'Horizontal Top-Down (Nadir)'],
+          ['Fungsi Utama:', 'Geotagging EXIF & AI Fire Detection']
+        ],
+        desc: 'Smartphone bekas dipasang telentang mendatar dengan lensa Sony IMX519 menghadap tegak lurus ke tanah melalui celah baki mount.'
+      },
+      mount: {
+        title: 'Baki Mount 3D-Print PETG Chassis',
+        subtitle: 'Rangka Pelindung & Dudukan Nadir',
+        weight: 'Net: 28g',
+        list: [
+          ['Material:', 'PETG Filament (Tahan Panas & Benturan)'],
+          ['Struktur:', 'Skeletal Grid Lattice Frame'],
+          ['Fitur Khusus:', 'Cut-out Window Nadir (30x20mm)'],
+          ['Posisi Mounting:', 'Under Belly Center of Gravity (CoG)'],
+          ['Fungsi:', 'Mengunci Smartphone & ESP32 di Bawah Drone']
+        ],
+        desc: 'Baki berbahan PETG yang dicetak 3D khusus untuk mendekap Realme 3 Pro secara aman tanpa menambah bobot berlebih.'
+      },
+      dampers: {
+        title: '4x Peredam Getaran Rubber Dampers',
+        subtitle: 'Isolasi Frekuensi Tinggi Baling-Baling',
+        weight: 'Net: 12g',
+        list: [
+          ['Tipe:', '4x Blue Elastomer Rubber Spheres'],
+          ['Load Rating:', 'Daya redam hingga 300g load'],
+          ['Penempatan:', 'Di antara Top Plate drone dan PETG Tray'],
+          ['Fungsi Utama:', 'Eliminasi Jello Effect / Rolling Shutter'],
+          ['Hasil:', 'Citra Foto 16MP Tajam untuk Photogrammetry']
+        ],
+        desc: 'Bola karet elastomer biru yang memisahkan getaran motor quadcopter dari sensor kamera ponsel.'
+      },
+      lora: {
+        title: 'ESP32 + Transceiver LoRa SX1262',
+        subtitle: 'Pemancar Radio Jarak Jauh (LoRa · DG-02)',
+        weight: 'Net: 18g',
+        list: [
+          ['Microcontroller:', 'ESP32-WROOM-32 Dual Core'],
+          ['LoRa Chipset:', 'Semtech SX1262 (923 MHz, verifikasi)'],
+          ['Antena:', '3 dBi Dipole Rubber Antenna (SMA)'],
+          ['Paket Data:', '16-Byte Compact Binary Payload'],
+          ['Jarak Jangkau:', '3 - 5 km Line-of-Sight']
+        ],
+        desc: 'Modul radio darurat yang memancarkan koordinat GPS & alert titik api ke posko saat jaringan 4G/LTE tidak ada.'
+      },
+      drone: {
+        title: 'Carbon Fiber Quadcopter Frame',
+        subtitle: 'Platform Udara Pembawa Payload Extension',
+        weight: 'Net: ~450g',
+        list: [
+          ['Frame Material:', '3K Weave Carbon Fiber Tube & Plates'],
+          ['Motor Brushless:', '4x 2212 920KV High Torque Motors'],
+          ['Propeller:', '9450 Self-locking Dual-blade Props'],
+          ['Baterai Platform:', '4S LiPo 5200mAh'],
+          ['Kapasitas Angkut:', 'Payload up to 400g']
+        ],
+        desc: 'Quadcopter yang membawa modul extension PyroScan tepat di perut bawah bodi untuk pemetaan otomatis.'
+      }
+    };
+
+    let scene, camera, renderer, controls;
+    let droneGroup, payloadGroup;
+    let phoneMesh, mountMesh, damperMeshes = [], esp32Mesh, otgCableMesh, droneFrameMesh;
+    let scanBeamMesh, flashLight, fireParticles, vectorArrow, flightPathLine;
+    let phoneGroupRef, droneBodyGroup, contactShadow, terrainMeshRef, fireLightRef, scanFootprint;
+    let rotorDiscs = [], modelStats = { loaded: 0, failed: 0, tris: 0 };
+
+    const explodedOffsets = {
+      drone: new THREE.Vector3(0, 2.2, 0),
+      dampers: new THREE.Vector3(0, 1.1, 0),
+      mount: new THREE.Vector3(0, 0, 0),
+      phone: new THREE.Vector3(0, -1.2, 0),
+      lora: new THREE.Vector3(1.5, -0.6, 0.5)
+    };
+    const defaultPositions = {};
+
+    function initThree() {
+      const container = document.getElementById('three-canvas');
+
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x76a9ea);
+      scene.fog = new THREE.FogExp2(0x86b6ea, 0.0036);
+
+      camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 500);
+      camera.position.set(-4, 24, 30);
+
+      renderer = new THREE.WebGLRenderer({ canvas: container, antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      // Tanpa outputEncoding, tekstur GLB (sRGB) tampil pucat dan pudar.
+      renderer.outputEncoding = THREE.sRGBEncoding;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.05;
+
+      controls = new THREE.OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.05;
+      controls.maxPolarAngle = Math.PI / 2 - 0.02;
+      controls.minDistance = 0.5;
+      controls.maxDistance = 120;
+      controls.target.set(-4, 4, -2);
+
+      createLaptopScreenTexture();
+      setupBrightLighting();
+      buildEnvironmentMap();
+
+      buildTerrain();
+      buildForestTrees();
+      buildFlightPathPolyline();
+      buildGroundStation();
+      buildWildfireHotspot();
+      buildDroneAndPayload();
+      buildContactShadow();
+      buildScanFootprint();
+      tuneSceneMaterials();
+      applyGLBModels();
+
+      window.addEventListener('resize', onWindowResize);
+      applyViewFromQuery();
+      animate();
+    }
+
+    // Deep link untuk share tampilan & screenshot otomatis:
+    //   ?view=payload|free|posko|laptop|follow|nadir  &exploded=1  &sim=1
+    function applyViewFromQuery() {
+      const params = new URLSearchParams(window.location.search);
+      const view = params.get('view');
+      if (view) setCameraView(view);
+      if (params.get('exploded') === '1') toggleExplodedView(true);
+      if (params.get('sim') === '1' && !state.isSimRunning) toggleSimulation();
+      const tab = params.get('tab');
+      if (tab) setActiveTab(tab);
+    }
+
+    function setupBrightLighting() {
+      // Intensitas diturunkan setelah renderer dipindah ke sRGB + ACES:
+      // nilai lama (1.6 / 2.0 / 1.1) dirancang untuk pipeline linear dan
+      // sekarang membuat seluruh scene pucat.
+      const hemiLight = new THREE.HemisphereLight(0xdff0ff, 0x2f4a28, 0.55);
+      hemiLight.position.set(0, 60, 0);
+      scene.add(hemiLight);
+
+      const sunLight = new THREE.DirectionalLight(0xfff2d8, 1.55);
+      sunLight.position.set(35, 55, 25);
+      sunLight.castShadow = true;
+      sunLight.shadow.mapSize.width = 2048;
+      sunLight.shadow.mapSize.height = 2048;
+      sunLight.shadow.camera.left = -45;
+      sunLight.shadow.camera.right = 45;
+      sunLight.shadow.camera.top = 45;
+      sunLight.shadow.camera.bottom = -45;
+      sunLight.shadow.bias = -0.0006;
+      scene.add(sunLight);
+
+      const fillLight = new THREE.DirectionalLight(0x9fd4ff, 0.28);
+      fillLight.position.set(-35, 35, -25);
+      scene.add(fillLight);
+
+      const rimLight = new THREE.DirectionalLight(0xe5a954, 0.42);
+      rimLight.position.set(0, -20, 30);
+      scene.add(rimLight);
+    }
+
+    // Peta lingkungan prosedural: tanpa ini material metalik dari Sketchfab
+    // terlihat matte dan mati, karena tidak ada apa pun untuk dipantulkan.
+    function buildEnvironmentMap() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 512;
+      canvas.height = 256;
+      const ctx = canvas.getContext('2d');
+
+      const sky = ctx.createLinearGradient(0, 0, 0, 256);
+      sky.addColorStop(0.0, '#d8e9ff');
+      sky.addColorStop(0.42, '#9bc4f5');
+      sky.addColorStop(0.52, '#7d9a6d');
+      sky.addColorStop(0.78, '#33502b');
+      sky.addColorStop(1.0, '#12190f');
+      ctx.fillStyle = sky;
+      ctx.fillRect(0, 0, 512, 256);
+
+      const sun = ctx.createRadialGradient(150, 62, 6, 150, 62, 76);
+      sun.addColorStop(0, 'rgba(255,246,222,1)');
+      sun.addColorStop(1, 'rgba(255,246,222,0)');
+      ctx.fillStyle = sun;
+      ctx.fillRect(0, 0, 512, 256);
+
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.mapping = THREE.EquirectangularReflectionMapping;
+      tex.encoding = THREE.sRGBEncoding;
+
+      const pmrem = new THREE.PMREMGenerator(renderer);
+      pmrem.compileEquirectangularShader();
+      scene.environment = pmrem.fromEquirectangular(tex).texture;
+
+      tex.dispose();
+      pmrem.dispose();
+    }
+
+    function buildTerrain() {
+      const terrainGeo = new THREE.PlaneGeometry(90, 90, 60, 60);
+      terrainGeo.rotateX(-Math.PI / 2);
+
+      const pos = terrainGeo.attributes.position;
+      const colors = [];
+
+      for (let i = 0; i < pos.count; i++) {
+        const x = pos.getX(i);
+        const z = pos.getZ(i);
+        
+        let y = Math.sin(x * 0.08) * Math.cos(z * 0.08) * 3.5 
+              + Math.sin(x * 0.2) * 1.2 
+              + Math.cos(z * 0.15) * 1.5;
+        
+        if (Math.abs(x) < 25 && Math.abs(z) < 25) y *= 0.4;
+
+        pos.setY(i, y);
+
+        const color = new THREE.Color();
+        if (y > 3) color.setHex(0x5a5345);
+        else if (y > 1) color.setHex(0x2d4829);
+        else color.setHex(0x1d3319);
+        
+        if (Math.hypot(x - 8, z - 8) < 9) color.setHex(0x151210);
+
+        // Variasi per-vertex: tanpa ini permukaan terbaca sebagai gradient
+        // polos, bukan tanah. Hash deterministik supaya scene reproducible.
+        const jitter = Math.abs(Math.sin(x * 12.9898 + z * 78.233) * 43758.5453) % 1;
+        color.offsetHSL(0, 0, (jitter - 0.5) * 0.055);
+        // Vertex color tidak ikut color-management material; konversi manual.
+        color.convertSRGBToLinear();
+
+        colors.push(color.r, color.g, color.b);
+      }
+
+      terrainGeo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+      terrainGeo.computeVertexNormals();
+
+      const terrainMat = new THREE.MeshStandardMaterial({
+        vertexColors: true,
+        roughness: 0.85,
+        metalness: 0.15,
+        flatShading: true
+      });
+
+      const terrainMesh = new THREE.Mesh(terrainGeo, terrainMat);
+      terrainMesh.receiveShadow = true;
+      scene.add(terrainMesh);
+      terrainMeshRef = terrainMesh;
+    }
+
+    function buildForestTrees() {
+      const treeGroup = new THREE.Group();
+      
+      const trunkMat = new THREE.MeshStandardMaterial({ color: 0x3d2817, roughness: 0.9 });
+      const burntTrunkMat = new THREE.MeshStandardMaterial({ color: 0x17120e, roughness: 0.95 });
+
+      const greenMats = [
+        new THREE.MeshStandardMaterial({ color: 0x1b3b1a, roughness: 0.8, flatShading: true }),
+        new THREE.MeshStandardMaterial({ color: 0x274e25, roughness: 0.8, flatShading: true }),
+        new THREE.MeshStandardMaterial({ color: 0x32612f, roughness: 0.8, flatShading: true })
+      ];
+      const burntFoliageMat = new THREE.MeshStandardMaterial({ color: 0x3a1e12, roughness: 0.9, flatShading: true });
+
+      const trunkGeo = new THREE.CylinderGeometry(0.12, 0.18, 1.2, 6);
+      const foliageGeo = new THREE.ConeGeometry(0.9, 2.2, 5);
+
+      for (let i = 0; i < 140; i++) {
+        const x = (Math.random() - 0.5) * 80;
+        const z = (Math.random() - 0.5) * 80;
+
+        if (Math.hypot(x + 22, z - 20) < 9 || (Math.abs(x) < 20 && Math.abs(z) < 16)) continue;
+
+        const distToFire = Math.hypot(x - 8, z - 8);
+        const isBurnt = distToFire < 9;
+
+        const tree = new THREE.Group();
+        const trunk = new THREE.Mesh(trunkGeo, isBurnt ? burntTrunkMat : trunkMat);
+        trunk.position.y = 0.6;
+        trunk.castShadow = true;
+        tree.add(trunk);
+
+        const mat = isBurnt ? burntFoliageMat : greenMats[Math.floor(Math.random() * greenMats.length)];
+        const foliage = new THREE.Mesh(foliageGeo, mat);
+        foliage.position.y = 2.0;
+        foliage.castShadow = true;
+        tree.add(foliage);
+
+        let y = Math.sin(x * 0.08) * Math.cos(z * 0.08) * 3.5 
+              + Math.sin(x * 0.2) * 1.2 
+              + Math.cos(z * 0.15) * 1.5;
+        if (Math.abs(x) < 25 && Math.abs(z) < 25) y *= 0.4;
+
+        tree.position.set(x, y, z);
+        const scale = 0.7 + Math.random() * 0.6;
+        tree.scale.set(scale, scale, scale);
+
+        treeGroup.add(tree);
+      }
+
+      scene.add(treeGroup);
+    }
+
+    function buildFlightPathPolyline() {
+      const points = state.waypoints;
+      const geometry = new THREE.BufferGeometry().setFromPoints(points);
+      const material = new THREE.LineBasicMaterial({
+        color: 0xe5a954,
+        linewidth: 2,
+        transparent: true,
+        opacity: 0.8
+      });
+      flightPathLine = new THREE.Line(geometry, material);
+      scene.add(flightPathLine);
+
+      // Penanda waypoint: satu Points cloud, bukan 14 mesh sphere. Sphere
+      // r=0.25 yang duduk tepat di posisi drone terbaca sebagai bola
+      // menggantung di payload — itulah yang membingungkan di tampilan dekat.
+      const markerGeo = new THREE.BufferGeometry().setFromPoints(points);
+      const markerMat = new THREE.PointsMaterial({
+        color: 0xe5a954,
+        size: 0.28,
+        map: makeSoftSprite(),
+        transparent: true,
+        opacity: 0.8,
+        depthWrite: false,
+        sizeAttenuation: true
+      });
+      scene.add(new THREE.Points(markerGeo, markerMat));
+    }
+
+    function buildGroundStation() {
+      const gsGroup = new THREE.Group();
+      gsGroup.position.set(-22, 0.5, 20);
+
+      const poskoLight = new THREE.PointLight(0xfffaed, 2.5, 25);
+      poskoLight.position.set(0, 6, 0);
+      gsGroup.add(poskoLight);
+
+      const padGeo = new THREE.BoxGeometry(2.8, 0.06, 2.8);
+      const padMat = new THREE.MeshStandardMaterial({ color: 0xe5a954, roughness: 0.4 });
+      const landingPad = new THREE.Mesh(padGeo, padMat);
+      landingPad.position.set(1.5, 0.03, 0);
+      landingPad.receiveShadow = true;
+
+      const hGeo = new THREE.PlaneGeometry(1.8, 1.8);
+      hGeo.rotateX(-Math.PI / 2);
+      const hCanvas = document.createElement('canvas');
+      hCanvas.width = 128; hCanvas.height = 128;
+      const hCtx = hCanvas.getContext('2d');
+      hCtx.fillStyle = '#e5a954'; hCtx.fillRect(0,0,128,128);
+      hCtx.fillStyle = '#12141d'; hCtx.font = 'bold 85px sans-serif'; hCtx.textAlign = 'center'; hCtx.textBaseline = 'middle';
+      hCtx.fillText('H', 64, 64);
+      const hTexture = new THREE.CanvasTexture(hCanvas);
+      const hMat = new THREE.MeshBasicMaterial({ map: hTexture });
+      const hMesh = new THREE.Mesh(hGeo, hMat);
+      hMesh.position.set(1.5, 0.07, 0);
+      gsGroup.add(landingPad, hMesh);
+
+      const tentRoofGeo = new THREE.ConeGeometry(3.6, 2.2, 4);
+      tentRoofGeo.rotateY(Math.PI / 4);
+      const tentMat = new THREE.MeshStandardMaterial({ color: 0x1f2937, roughness: 0.6, metalness: 0.2 });
+      const tentRoof = new THREE.Mesh(tentRoofGeo, tentMat);
+      tentRoof.position.y = 2.1;
+      tentRoof.castShadow = true;
+      gsGroup.add(tentRoof);
+
+      const poleGeo = new THREE.CylinderGeometry(0.04, 0.04, 2.2);
+      const poleMat = new THREE.MeshStandardMaterial({ color: 0x9ca3af, metalness: 0.8 });
+      const polePos = [[-2.2, 1.1, -2.2], [2.2, 1.1, -2.2], [-2.2, 1.1, 2.2], [2.2, 1.1, 2.2]];
+      polePos.forEach(p => {
+        const pole = new THREE.Mesh(poleGeo, poleMat);
+        pole.position.set(p[0], p[1], p[2]);
+        gsGroup.add(pole);
+      });
+
+      const tableTopGeo = new THREE.BoxGeometry(2.4, 0.1, 1.2);
+      const woodMat = new THREE.MeshStandardMaterial({ color: 0x85502c, roughness: 0.7 });
+      const tableTop = new THREE.Mesh(tableTopGeo, woodMat);
+      tableTop.position.set(-0.4, 1.0, 0);
+      tableTop.castShadow = true;
+      gsGroup.add(tableTop);
+
+      const tableLegGeo = new THREE.CylinderGeometry(0.04, 0.04, 1.0);
+      const tableLegPositions = [[-1.5, 0.5, -0.5], [0.7, 0.5, -0.5], [-1.5, 0.5, 0.5], [0.7, 0.5, 0.5]];
+      tableLegPositions.forEach(p => {
+        const leg = new THREE.Mesh(tableLegGeo, poleMat);
+        leg.position.set(p[0], p[1], p[2]);
+        gsGroup.add(leg);
+      });
+
+      const laptopGroup = new THREE.Group();
+      laptopGroup.position.set(-0.4, 1.05, 0);
+
+      const lapBaseGeo = new THREE.BoxGeometry(0.55, 0.03, 0.4);
+      const lapMat = new THREE.MeshStandardMaterial({ color: 0x111827, metalness: 0.7, roughness: 0.3 });
+      const lapBase = new THREE.Mesh(lapBaseGeo, lapMat);
+      laptopGroup.add(lapBase);
+
+      const lapScreenGeo = new THREE.BoxGeometry(0.55, 0.36, 0.02);
+      const lapScreen = new THREE.Mesh(lapScreenGeo, lapMat);
+      lapScreen.position.set(0, 0.18, -0.2);
+      lapScreen.rotation.x = -0.3;
+
+      const displayGeo = new THREE.PlaneGeometry(0.5, 0.3);
+      const display = new THREE.Mesh(displayGeo, laptopDisplayMat);
+      display.position.set(0, 0.18, -0.185);
+      display.rotation.x = -0.3;
+
+      laptopGroup.add(lapScreen, display);
+      gsGroup.add(laptopGroup);
+
+      const loraBoxGeo = new THREE.BoxGeometry(0.4, 0.15, 0.3);
+      const loraBoxMat = new THREE.MeshStandardMaterial({ color: 0x374151, metalness: 0.6 });
+      const loraBox = new THREE.Mesh(loraBoxGeo, loraBoxMat);
+      loraBox.position.set(0.4, 1.12, 0.1);
+
+      const antRxGeo = new THREE.CylinderGeometry(0.015, 0.015, 0.6, 8);
+      const antRx = new THREE.Mesh(antRxGeo, poleMat);
+      antRx.position.set(0.55, 1.45, 0.1);
+
+      const ledGeo = new THREE.SphereGeometry(0.03, 8, 8);
+      const ledMat = new THREE.MeshBasicMaterial({ color: 0x10b981 });
+      const led = new THREE.Mesh(ledGeo, ledMat);
+      led.position.set(0.25, 1.2, 0.22);
+
+      gsGroup.add(loraBox, antRx, led);
+
+      const towerGeo = new THREE.CylinderGeometry(0.06, 0.1, 5.5, 6);
+      const tower = new THREE.Mesh(towerGeo, poleMat);
+      tower.position.set(-2.5, 2.75, 0);
+
+      const beaconLight = new THREE.PointLight(0xe5a954, 2, 10);
+      beaconLight.position.set(-2.5, 5.5, 0);
+
+      const beaconGeo = new THREE.SphereGeometry(0.2, 12, 12);
+      const beaconMat = new THREE.MeshBasicMaterial({ color: 0xe5a954 });
+      const beaconMesh = new THREE.Mesh(beaconGeo, beaconMat);
+      beaconMesh.position.set(-2.5, 5.5, 0);
+
+      gsGroup.add(tower, beaconLight, beaconMesh);
+      scene.add(gsGroup);
+    }
+
+    // Sprite bulat lembut untuk partikel. PointsMaterial tanpa map merender
+    // kotak putih pekat — terlihat jelas sebelum diperbaiki.
+    function makeSoftSprite() {
+      if (makeSoftSprite._tex) return makeSoftSprite._tex;
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = 64;
+      const ctx = canvas.getContext('2d');
+      const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+      g.addColorStop(0.00, 'rgba(255,255,255,1)');
+      g.addColorStop(0.35, 'rgba(255,214,150,0.72)');
+      g.addColorStop(0.70, 'rgba(255,122,42,0.24)');
+      g.addColorStop(1.00, 'rgba(255,80,20,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, 64, 64);
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.encoding = THREE.sRGBEncoding;
+      makeSoftSprite._tex = tex;
+      return tex;
+    }
+
+    // Gradien alfa vertikal untuk volume scan (transparan di ujung atas).
+    function makeBeamGradient() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 4;
+      canvas.height = 128;
+      const ctx = canvas.getContext('2d');
+      const g = ctx.createLinearGradient(0, 0, 0, 128);
+      g.addColorStop(0.00, 'rgba(255,255,255,0)');
+      g.addColorStop(0.55, 'rgba(255,255,255,0.10)');
+      g.addColorStop(1.00, 'rgba(255,255,255,0.60)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, 4, 128);
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.encoding = THREE.sRGBEncoding;
+      return tex;
+    }
+
+    function buildWildfireHotspot() {
+      const fireGroup = new THREE.Group();
+      fireGroup.position.set(8, 0.8, 8);
+
+      const fireLight = new THREE.PointLight(0xe55338, 2.2, 13);
+      fireLight.position.set(0, 1.5, 0);
+      fireGroup.add(fireLight);
+      fireLightRef = fireLight;
+
+      const particleCount = 50;
+      const fireGeo = new THREE.BufferGeometry();
+      const firePos = new Float32Array(particleCount * 3);
+      for (let i = 0; i < particleCount * 3; i += 3) {
+        firePos[i] = (Math.random() - 0.5) * 3.5;
+        firePos[i + 1] = Math.random() * 3.5;
+        firePos[i + 2] = (Math.random() - 0.5) * 3.5;
+      }
+      fireGeo.setAttribute('position', new THREE.BufferAttribute(firePos, 3));
+
+      const fireMat = new THREE.PointsMaterial({
+        color: 0xff8a3d,
+        size: 0.62,
+        map: makeSoftSprite(),
+        transparent: true,
+        opacity: 0.9,
+        depthWrite: false,
+        sizeAttenuation: true,
+        blending: THREE.AdditiveBlending
+      });
+
+      fireParticles = new THREE.Points(fireGeo, fireMat);
+      fireGroup.add(fireParticles);
+      scene.add(fireGroup);
+
+      const arrowDir = new THREE.Vector3(1, 0.35, 0.8).normalize();
+      const arrowOrigin = new THREE.Vector3(8, 1.2, 8);
+      vectorArrow = new THREE.ArrowHelper(arrowDir, arrowOrigin, 5.5, 0xe5a954, 1.4, 0.9);
+      scene.add(vectorArrow);
+    }
+
+    // High-Fidelity Procedural PBR Texture Generators
+    function createCarbonFiberTexture() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 128; canvas.height = 128;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#0f1015';
+      ctx.fillRect(0, 0, 128, 128);
+      for (let x = 0; x < 128; x += 8) {
+        for (let y = 0; y < 128; y += 8) {
+          ctx.fillStyle = ((x / 8 + y / 8) % 2 === 0) ? '#242632' : '#14161f';
+          ctx.fillRect(x, y, 8, 8);
+          ctx.fillStyle = 'rgba(255,255,255,0.05)';
+          ctx.fillRect(x + 1, y + 1, 6, 3);
+        }
+      }
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.wrapS = THREE.RepeatWrapping;
+      tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(4, 4);
+      return tex;
+    }
+
+    function createPCBTexture() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 256; canvas.height = 256;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#0d1f14';
+      ctx.fillRect(0, 0, 256, 256);
+      ctx.strokeStyle = '#279854';
+      ctx.lineWidth = 2;
+      for (let i = 0; i < 18; i++) {
+        ctx.beginPath();
+        ctx.moveTo(Math.random() * 256, Math.random() * 256);
+        ctx.lineTo(Math.random() * 256, Math.random() * 256);
+        ctx.stroke();
+      }
+      ctx.fillStyle = '#e5a954';
+      for (let i = 0; i < 24; i++) {
+        ctx.beginPath();
+        ctx.arc(Math.random() * 256, Math.random() * 256, 3.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      return new THREE.CanvasTexture(canvas);
+    }
+
+    function createPhoneBackTexture() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 512; canvas.height = 1024;
+      const ctx = canvas.getContext('2d');
+      const grad = ctx.createLinearGradient(0, 0, 512, 1024);
+      grad.addColorStop(0, '#0a1128');
+      grad.addColorStop(0.45, '#001f54');
+      grad.addColorStop(0.8, '#034078');
+      grad.addColorStop(1, '#00b0ff');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, 512, 1024);
+
+      // Nitro Blue S-curve reflection sheen
+      ctx.strokeStyle = 'rgba(0, 229, 255, 0.35)';
+      ctx.lineWidth = 45;
+      ctx.beginPath();
+      ctx.moveTo(0, 150);
+      ctx.bezierCurveTo(220, 380, 290, 620, 512, 850);
+      ctx.stroke();
+
+      // Realme Brand Logo
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
+      ctx.font = 'bold 34px sans-serif';
+      ctx.fillText('realme', 45, 940);
+
+      return new THREE.CanvasTexture(canvas);
+    }
+
+    function buildDroneAndPayload() {
+      droneGroup = new THREE.Group();
+      droneGroup.position.copy(state.dronePos);
+
+      // PBR Materials setup
+      const carbonTex = createCarbonFiberTexture();
+      const carbonMat = new THREE.MeshStandardMaterial({ map: carbonTex, roughness: 0.35, metalness: 0.75 });
+      const carbonTubeMat = new THREE.MeshStandardMaterial({ color: 0x181a20, roughness: 0.25, metalness: 0.85 });
+      const motorBaseMat = new THREE.MeshStandardMaterial({ color: 0x222530, roughness: 0.3, metalness: 0.8 });
+      const motorRotorMat = new THREE.MeshStandardMaterial({ color: 0x8a92a6, roughness: 0.15, metalness: 0.95 });
+      const copperWindingMat = new THREE.MeshStandardMaterial({ color: 0xb86d29, roughness: 0.4, metalness: 0.7 });
+      const propMat = new THREE.MeshStandardMaterial({ color: 0x2c2e3b, roughness: 0.2, transparent: true, opacity: 0.88 });
+      
+      const petgMat = new THREE.MeshStandardMaterial({ color: 0xc9452c, roughness: 0.34, metalness: 0.18 });
+      const petgGridMat = new THREE.MeshStandardMaterial({ color: 0x8f2f1c, roughness: 0.45, metalness: 0.1, wireframe: true });
+      const damperMat = new THREE.MeshStandardMaterial({ color: 0x00b0ff, roughness: 0.5, metalness: 0.2 });
+      const brassMat = new THREE.MeshStandardMaterial({ color: 0xd4af37, roughness: 0.3, metalness: 0.9 });
+      
+      const phoneBackTex = createPhoneBackTexture();
+      const phoneBackMat = new THREE.MeshStandardMaterial({ map: phoneBackTex, roughness: 0.15, metalness: 0.85 });
+      const phoneRimMat = new THREE.MeshStandardMaterial({ color: 0x101a30, roughness: 0.2, metalness: 0.9 });
+      const screenGlassMat = new THREE.MeshStandardMaterial({ color: 0x07080c, roughness: 0.05, metalness: 0.95, transparent: true, opacity: 0.9 });
+      const camBumpMat = new THREE.MeshStandardMaterial({ color: 0x0e1118, roughness: 0.1, metalness: 0.9 });
+      const lensPrimaryMat = new THREE.MeshStandardMaterial({ color: 0x059669, roughness: 0.05, metalness: 0.9 });
+      const lensSecondaryMat = new THREE.MeshStandardMaterial({ color: 0x7c3aed, roughness: 0.05, metalness: 0.9 });
+      
+      const pcbTex = createPCBTexture();
+      const pcbMat = new THREE.MeshStandardMaterial({ map: pcbTex, roughness: 0.4, metalness: 0.3 });
+      const shieldMat = new THREE.MeshStandardMaterial({ color: 0xc4c9d4, roughness: 0.15, metalness: 0.95 });
+      const antennaRubberMat = new THREE.MeshStandardMaterial({ color: 0x12141c, roughness: 0.7, metalness: 0.2 });
+
+      // 1. DRONE CARBON QUADCOPTER FRAME
+      droneFrameMesh = new THREE.Group();
+      defaultPositions.drone = new THREE.Vector3(0, 0, 0);
+
+      // Carbon Center Plates (Top & Bottom)
+      const centerPlateShape = new THREE.Shape();
+      centerPlateShape.moveTo(-0.7, -0.7);
+      centerPlateShape.lineTo(0.7, -0.7);
+      centerPlateShape.lineTo(0.9, 0);
+      centerPlateShape.lineTo(0.7, 0.7);
+      centerPlateShape.lineTo(-0.7, 0.7);
+      centerPlateShape.lineTo(-0.9, 0);
+      
+      const extrudeSettings = { depth: 0.06, bevelEnabled: true, bevelSegments: 3, steps: 1, bevelSize: 0.02, bevelThickness: 0.02 };
+      const topPlateGeo = new THREE.ExtrudeGeometry(centerPlateShape, extrudeSettings);
+      topPlateGeo.rotateX(Math.PI / 2);
+      const topPlateMesh = new THREE.Mesh(topPlateGeo, carbonMat);
+      topPlateMesh.position.y = 0.2;
+      
+      const bottomPlateMesh = new THREE.Mesh(topPlateGeo, carbonMat);
+      bottomPlateMesh.position.y = -0.2;
+      droneFrameMesh.add(topPlateMesh, bottomPlateMesh);
+
+      // 4S LiPo Battery Pack & Standoffs
+      const lipoGeo = new THREE.BoxGeometry(0.8, 0.4, 1.3);
+      const lipoMat = new THREE.MeshStandardMaterial({ color: 0xffb703, roughness: 0.4, metalness: 0.6 });
+      const lipoBattery = new THREE.Mesh(lipoGeo, lipoMat);
+      lipoBattery.position.set(0, 0.42, 0);
+      droneFrameMesh.add(lipoBattery);
+
+      // Flight Controller stack with LEDs
+      const fcBoardGeo = new THREE.BoxGeometry(0.4, 0.05, 0.4);
+      const fcBoardMat = new THREE.MeshStandardMaterial({ color: 0x004b23 });
+      const fcBoard = new THREE.Mesh(fcBoardGeo, fcBoardMat);
+      fcBoard.position.set(0, 0, 0);
+      
+      const fcLedGeo = new THREE.SphereGeometry(0.025, 8, 8);
+      const fcLedMat = new THREE.MeshBasicMaterial({ color: 0x10b981 });
+      const fcLed = new THREE.Mesh(fcLedGeo, fcLedMat);
+      fcLed.position.set(0.15, 0.03, 0.15);
+      droneFrameMesh.add(fcBoard, fcLed);
+
+      // Quad Arms, 2212 Motors & Props
+      const armAngles = [Math.PI / 4, (3 * Math.PI) / 4, (5 * Math.PI) / 4, (7 * Math.PI) / 4];
+      droneGroup.props = [];
+
+      armAngles.forEach((angle) => {
+        const armGroup = new THREE.Group();
+        armGroup.rotation.y = angle;
+
+        // Hollow Carbon Arm Tube
+        const armGeo = new THREE.CylinderGeometry(0.075, 0.075, 2.1, 16);
+        armGeo.rotateZ(Math.PI / 2);
+        const arm = new THREE.Mesh(armGeo, carbonTubeMat);
+        arm.position.x = 1.05;
+        armGroup.add(arm);
+
+        // Motor Assembly (Stator Base + Copper Coils + Metallic Rotor)
+        const motorBaseGeo = new THREE.CylinderGeometry(0.22, 0.22, 0.12, 20);
+        const motorBase = new THREE.Mesh(motorBaseGeo, motorBaseMat);
+        motorBase.position.set(2.1, 0.06, 0);
+
+        const copperCoilsGeo = new THREE.CylinderGeometry(0.18, 0.18, 0.14, 12);
+        const copperCoils = new THREE.Mesh(copperCoilsGeo, copperWindingMat);
+        copperCoils.position.set(2.1, 0.16, 0);
+
+        const motorRotorGeo = new THREE.CylinderGeometry(0.24, 0.24, 0.18, 20);
+        const motorRotor = new THREE.Mesh(motorRotorGeo, motorRotorMat);
+        motorRotor.position.set(2.1, 0.24, 0);
+
+        const propNutGeo = new THREE.ConeGeometry(0.08, 0.15, 12);
+        const propNut = new THREE.Mesh(propNutGeo, motorRotorMat);
+        propNut.position.set(2.1, 0.38, 0);
+
+        armGroup.add(motorBase, copperCoils, motorRotor, propNut);
+
+        // 9450 Airfoil Propellers
+        const propGeo = new THREE.BoxGeometry(1.7, 0.02, 0.15);
+        const prop = new THREE.Mesh(propGeo, propMat);
+        prop.position.set(2.1, 0.34, 0);
+        armGroup.add(prop);
+        droneGroup.props.push(prop);
+
+        droneFrameMesh.add(armGroup);
+      });
+
+      // Landing Gear Legs with Rubber Caps
+      const legGeo = new THREE.CylinderGeometry(0.045, 0.045, 1.4, 12);
+      const legCapGeo = new THREE.CylinderGeometry(0.06, 0.06, 0.1, 12);
+      const legPositions = [[-0.65, -0.7, 0.65], [0.65, -0.7, 0.65], [-0.65, -0.7, -0.65], [0.65, -0.7, -0.65]];
+      
+      legPositions.forEach(p => {
+        const leg = new THREE.Mesh(legGeo, carbonTubeMat);
+        leg.position.set(p[0], p[1], p[2]);
+        leg.rotation.z = p[0] > 0 ? -0.22 : 0.22;
+        
+        const cap = new THREE.Mesh(legCapGeo, antennaRubberMat);
+        cap.position.set(p[0] * 1.1, -1.35, p[2]);
+        droneFrameMesh.add(leg, cap);
+      });
+
+      droneGroup.add(droneFrameMesh);
+
+      // 2. PAYLOAD EXTENSION GROUP
+      payloadGroup = new THREE.Group();
+      payloadGroup.position.set(0, -0.55, 0);
+
+      // 3. RUBBER DAMPERS (4x Blue Spheres + Brass Mounting Studs)
+      const damperGroup = new THREE.Group();
+      defaultPositions.dampers = new THREE.Vector3(0, -0.1, 0);
+      damperGroup.position.copy(defaultPositions.dampers);
+
+      const damperGeo = new THREE.SphereGeometry(0.12, 16, 16);
+      const studGeo = new THREE.CylinderGeometry(0.035, 0.035, 0.28, 10);
+      const damperPositions = [[-0.55, 0, -0.65], [0.55, 0, -0.65], [-0.55, 0, 0.65], [0.55, 0, 0.65]];
+      
+      damperPositions.forEach(p => {
+        const damper = new THREE.Mesh(damperGeo, damperMat);
+        damper.position.set(p[0], p[1], p[2]);
+
+        const stud = new THREE.Mesh(studGeo, brassMat);
+        stud.position.set(p[0], p[1], p[2]);
+
+        damperGroup.add(damper, stud);
+        damperMeshes.push(damper);
+      });
+      payloadGroup.add(damperGroup);
+
+      // 4. PETG MOUNT TRAY CHASSIS (3D-Print Mesh + Nadir Cutout)
+      const mountTrayGroup = new THREE.Group();
+      defaultPositions.mount = new THREE.Vector3(0, -0.25, 0);
+      mountTrayGroup.position.copy(defaultPositions.mount);
+
+      // Tray sebagai FRAME, bukan slab solid: kamera payload harus melihat ke
+      // bawah lewat bukaan. Slab pejal menutupi seluruh ponsel, jadi yang
+      // terlihat hanya tonjolan kameranya.
+      const trayW = 1.38, trayL = 1.88, trayH = 0.14, wallW = 0.22;
+      const trayParts = new THREE.Group();
+      const addBar = (w, d, x, z) => {
+        const bar = new THREE.Mesh(new THREE.BoxGeometry(w, trayH, d), petgMat);
+        bar.position.set(x, 0, z);
+        trayParts.add(bar);
+      };
+      addBar(wallW, trayL, -(trayW - wallW) / 2, 0);
+      addBar(wallW, trayL, (trayW - wallW) / 2, 0);
+      addBar(trayW - wallW * 2, wallW, 0, -(trayL - wallW) / 2);
+      addBar(trayW - wallW * 2, wallW, 0, (trayL - wallW) / 2);
+
+      mountMesh = trayParts;
+      mountTrayGroup.add(trayParts);
+
+      const trayGridGeo = new THREE.BoxGeometry(1.0, 0.03, 1.5);
+      const trayGrid = new THREE.Mesh(trayGridGeo, petgGridMat);
+      trayGrid.position.y = -0.055;
+      mountTrayGroup.add(trayGrid);
+
+      // Corner posts: tanpa ini tray terbaca sebagai papan kosong, bukan frame cetak.
+      const postGeo = new THREE.BoxGeometry(0.16, 0.22, 0.16);
+      const postMat = new THREE.MeshStandardMaterial({ color: 0x8f2f1c, roughness: 0.5, metalness: 0.12 });
+      [[-0.61, -0.83], [0.61, -0.83], [-0.61, 0.83], [0.61, 0.83]].forEach(([x, z]) => {
+        const post = new THREE.Mesh(postGeo, postMat);
+        post.position.set(x, -0.01, z);
+        mountTrayGroup.add(post);
+      });
+
+      // Ring port kamera lama dihapus: bukaan frame sekarang menjadi portnya,
+      // ring di tengah bukaan justru menghalangi lensa.
+
+      payloadGroup.add(mountTrayGroup);
+
+      // 5. REALME 3 PRO SMARTPHONE CORE
+      const phoneGroup = new THREE.Group();
+      defaultPositions.phone = new THREE.Vector3(0, -0.40, 0);
+      phoneGroup.position.copy(defaultPositions.phone);
+      phoneGroupRef = phoneGroup;
+
+      // Nitro Blue Chassis Body & Metallic Perimeter Rim
+      const phoneBodyGeo = new THREE.BoxGeometry(1.18, 0.09, 1.68);
+      phoneMesh = new THREE.Mesh(phoneBodyGeo, phoneBackMat);
+
+      const phoneRimGeo = new THREE.BoxGeometry(1.21, 0.08, 1.71);
+      const phoneRim = new THREE.Mesh(phoneRimGeo, phoneRimMat);
+      phoneGroup.add(phoneMesh, phoneRim);
+
+      // Front Display Glass & Teardrop Notch
+      const phoneScreenGeo = new THREE.PlaneGeometry(1.12, 1.62);
+      phoneScreenGeo.rotateX(-Math.PI / 2);
+      const phoneScreen = new THREE.Mesh(phoneScreenGeo, screenGlassMat);
+      phoneScreen.position.y = 0.048;
+      
+      const notchGeo = new THREE.SphereGeometry(0.04, 12, 12);
+      const notch = new THREE.Mesh(notchGeo, screenGlassMat);
+      notch.position.set(0, 0.049, -0.74);
+      phoneGroup.add(phoneScreen, notch);
+
+      // Dual Camera Housing (16MP Sony IMX519 + 5MP Depth)
+      const camBumpGeo = new THREE.BoxGeometry(0.22, 0.06, 0.42);
+      const camBump = new THREE.Mesh(camBumpGeo, camBumpMat);
+      camBump.position.set(0.3, -0.07, 0.4);
+
+      const lens1Geo = new THREE.CylinderGeometry(0.055, 0.055, 0.08, 16);
+      const lens1 = new THREE.Mesh(lens1Geo, lensPrimaryMat);
+      lens1.position.set(0.3, -0.075, 0.33);
+
+      const lens2Geo = new THREE.CylinderGeometry(0.045, 0.045, 0.08, 16);
+      const lens2 = new THREE.Mesh(lens2Geo, lensSecondaryMat);
+      lens2.position.set(0.3, -0.075, 0.47);
+
+      const flashGeo = new THREE.CylinderGeometry(0.025, 0.025, 0.07, 12);
+      const flashMat = new THREE.MeshBasicMaterial({ color: 0xfffaed });
+      const flashMesh = new THREE.Mesh(flashGeo, flashMat);
+      flashMesh.position.set(0.3, -0.07, 0.55);
+
+      // Fingerprint Scanner Ring
+      const fpGeo = new THREE.CylinderGeometry(0.1, 0.1, 0.02, 20);
+      const fpMesh = new THREE.Mesh(fpGeo, brassMat);
+      fpMesh.position.set(0, -0.05, -0.12);
+
+      // USB-C Bottom Port & Speaker Slots
+      const portGeo = new THREE.BoxGeometry(0.16, 0.03, 0.04);
+      const portMat = new THREE.MeshStandardMaterial({ color: 0x12141d, roughness: 0.3, metalness: 0.6 });
+      const portMesh = new THREE.Mesh(portGeo, portMat);
+      portMesh.position.set(0, 0, 0.84);
+
+      phoneGroup.add(camBump, lens1, lens2, flashMesh, fpMesh, portMesh);
+      payloadGroup.add(phoneGroup);
+
+      // 6. ESP32 + SX1262 LORA TRANSCEIVER MODULE
+      esp32Mesh = new THREE.Group();
+      defaultPositions.lora = new THREE.Vector3(0.75, -0.22, 0.4);
+      esp32Mesh.position.copy(defaultPositions.lora);
+
+      const pcbBoardGeo = new THREE.BoxGeometry(0.42, 0.05, 0.72);
+      const pcbBoard = new THREE.Mesh(pcbBoardGeo, pcbMat);
+
+      // Metallic ESP32-WROOM-32 Shield Box
+      const shieldGeo = new THREE.BoxGeometry(0.26, 0.05, 0.3);
+      const shield = new THREE.Mesh(shieldGeo, shieldMat);
+      shield.position.set(0, 0.04, -0.12);
+
+      // SX1262 LoRa Chip & SMA Connector
+      const loraChipGeo = new THREE.BoxGeometry(0.12, 0.03, 0.12);
+      const loraChipMat = new THREE.MeshStandardMaterial({ color: 0x1b1e28, roughness: 0.2 });
+      const loraChip = new THREE.Mesh(loraChipGeo, loraChipMat);
+      loraChip.position.set(0.08, 0.04, 0.18);
+
+      const smaBaseGeo = new THREE.CylinderGeometry(0.045, 0.045, 0.15, 12);
+      const smaBase = new THREE.Mesh(smaBaseGeo, brassMat);
+      smaBase.position.set(0.15, -0.05, 0.32);
+
+      // 915MHz Rubber Dipole Antenna
+      const antBodyGeo = new THREE.CylinderGeometry(0.035, 0.03, 0.7, 12);
+      const antBody = new THREE.Mesh(antBodyGeo, antennaRubberMat);
+      antBody.position.set(0.15, -0.32, 0.42);
+      antBody.rotation.x = 0.35;
+
+      esp32Mesh.add(pcbBoard, shield, loraChip, smaBase, antBody);
+      payloadGroup.add(esp32Mesh);
+
+      // 7. USB-C OTG FLEXIBLE CABLE (Connecting Phone to ESP32)
+      const OTGCurve = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(0, -0.24, 0.84),
+        new THREE.Vector3(0.25, -0.3, 0.88),
+        new THREE.Vector3(0.65, -0.26, 0.65),
+        new THREE.Vector3(0.75, -0.22, 0.4)
+      ]);
+      const tubeGeo = new THREE.TubeGeometry(OTGCurve, 16, 0.022, 8, false);
+      const cableMat = new THREE.MeshStandardMaterial({ color: 0x0a0c10, roughness: 0.8 });
+      otgCableMesh = new THREE.Mesh(tubeGeo, cableMat);
+      payloadGroup.add(otgCableMesh);
+
+      droneGroup.childrenPayload = {
+        drone: droneFrameMesh,
+        dampers: damperGroup,
+        mount: mountTrayGroup,
+        phone: phoneGroup,
+        lora: esp32Mesh
+      };
+
+      droneGroup.add(payloadGroup);
+      scene.add(droneGroup);
+
+      // Scan Cone Beam & LED Flashlight
+      // Volume scan. Versi kerucut solid membuat kamera yang berada di dalam
+      // kerucut melihat dinding terdekat sebagai cakram pekat. Dengan gradien
+      // alfa di ujung atas, ia terbaca sebagai berkas cahaya, bukan bidang.
+      const beamGeo = new THREE.CylinderGeometry(0.4, 4.2, 9.5, 48, 6, true);
+      const beamMat = new THREE.MeshBasicMaterial({
+        color: 0xffc48a,
+        map: makeBeamGradient(),
+        transparent: true,
+        opacity: 0.30,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        side: THREE.DoubleSide
+      });
+      scanBeamMesh = new THREE.Mesh(beamGeo, beamMat);
+      scanBeamMesh.position.set(0, -4.75, 0);
+      droneGroup.add(scanBeamMesh);
+
+      flashLight = new THREE.PointLight(0xffffff, 0, 15);
+      flashLight.position.set(0, -1, 0);
+      droneGroup.add(flashLight);
+    }
+
+    function triggerPhotoCapture() {
+      if (!state.isSimRunning) return;
+      
+      state.photoCount++;
+      setSafeText('hud-photos', `${state.photoCount} Fotos`);
+      
+      state.confidenceScore = (88 + Math.random() * 8).toFixed(1);
+      setSafeText('hud-confidence', `${state.confidenceScore}% (CONF)`);
+      setSafeStyleWidth('hud-bar', `${state.confidenceScore}%`);
+
+      createGroundGeotagMarker();
+    }
+
+    function createGroundGeotagMarker() {
+      const geotagGroup = new THREE.Group();
+      const dropX = droneGroup.position.x;
+      const dropZ = droneGroup.position.z;
+      
+      const distToFire = Math.hypot(dropX - 8, dropZ - 8);
+      const isFireDetected = distToFire < 12;
+
+      const footprintColor = isFireDetected ? 0xef4444 : 0x00e5ff;
+      const dotColor = isFireDetected ? 0xff2200 : 0x00ff88;
+
+      const fovWidth = 6.2;
+      const fovHeight = 5.2;
+      const footprintGeo = new THREE.PlaneGeometry(fovWidth, fovHeight);
+      footprintGeo.rotateX(-Math.PI / 2);
+
+      const footprintMat = new THREE.MeshBasicMaterial({
+        color: footprintColor,
+        transparent: true,
+        opacity: isFireDetected ? 0.35 : 0.2,
+        side: THREE.DoubleSide,
+        depthWrite: false
+      });
+
+      const footprintMesh = new THREE.Mesh(footprintGeo, footprintMat);
+      footprintMesh.position.set(dropX, 0.15, dropZ);
+
+      const edges = new THREE.EdgesGeometry(footprintGeo);
+      const lineMat = new THREE.LineBasicMaterial({ color: footprintColor, transparent: true, opacity: 0.85 });
+      const outline = new THREE.LineSegments(edges, lineMat);
+      outline.position.set(dropX, 0.16, dropZ);
+
+      const dotGeo = new THREE.SphereGeometry(0.25, 12, 12);
+      const dotMat = new THREE.MeshBasicMaterial({ color: dotColor });
+      const dotMesh = new THREE.Mesh(dotGeo, dotMat);
+      dotMesh.position.set(dropX, 0.25, dropZ);
+
+      const ringGeo = new THREE.RingGeometry(0.35, 0.5, 16);
+      ringGeo.rotateX(-Math.PI / 2);
+      const ringMat = new THREE.MeshBasicMaterial({ color: footprintColor, side: THREE.DoubleSide });
+      const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+      ringMesh.position.set(dropX, 0.26, dropZ);
+
+      const rayLineGeo = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(dropX, droneGroup.position.y - 0.6, dropZ),
+        new THREE.Vector3(dropX, 0.2, dropZ)
+      ]);
+      const rayLineMat = new THREE.LineBasicMaterial({ color: footprintColor, transparent: true, opacity: 0.5 });
+      const rayLine = new THREE.Line(rayLineGeo, rayLineMat);
+
+      geotagGroup.add(footprintMesh, outline, dotMesh, ringMesh, rayLine);
+      scene.add(geotagGroup);
+      geotagMarkers.push(geotagGroup);
+    }
+
+    function triggerLandingSequence() {
+      state.isSimRunning = false;
+      state.simStage = 'LANDING';
+      state.syncProgress = 0;
+
+      setCameraView('posko');
+
+      setSafeClass('sim-status-badge', "px-2.5 py-1 rounded-full bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 text-[11px] font-mono font-bold flex items-center gap-1.5");
+      setSafeHTML('sim-status-badge', `<span class="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span> LANDING & SYNC`);
+
+      const log = document.getElementById('ai-log');
+      if (log) {
+        const p = document.createElement('p');
+        p.className = 'text-cyan-400 font-bold';
+        p.innerText = `[${new Date().toLocaleTimeString().split(' ')[0]}] Initiating Return to Home (RTH) & Posko Landing.`;
+        log.appendChild(p);
+        log.scrollTop = log.scrollHeight;
+      }
+    }
+
+    function toggleExplodedView(exploded) {
+      state.isExploded = exploded;
+
+      const p = droneGroup.childrenPayload;
+      if (!p) return;
+
+      const targetDrone = exploded ? explodedOffsets.drone : defaultPositions.drone;
+      const targetDampers = exploded ? explodedOffsets.dampers : defaultPositions.dampers;
+      const targetMount = exploded ? explodedOffsets.mount : defaultPositions.mount;
+      const targetPhone = exploded ? explodedOffsets.phone : defaultPositions.phone;
+      const targetLora = exploded ? explodedOffsets.lora : defaultPositions.lora;
+
+      p.drone.position.copy(targetDrone);
+      p.dampers.position.copy(targetDampers);
+      p.mount.position.copy(targetMount);
+      p.phone.position.copy(targetPhone);
+      p.lora.position.copy(targetLora);
+
+      if (exploded) setCameraView('payload');
+    }
+
+    // =====================================================================
+    // LAPISAN ASET 3D — model GLB tertanam sebagai base64
+    // =====================================================================
+
+    function b64ToArrayBuffer(b64) {
+      const bin = atob(b64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      return bytes.buffer;
+    }
+
+    function loadEmbeddedGLB(b64) {
+      return new Promise((resolve, reject) => {
+        if (!b64 || b64.indexOf('__B64_') === 0) {
+          reject(new Error('placeholder aset belum diinjeksi'));
+          return;
+        }
+        try {
+          new THREE.GLTFLoader().parse(b64ToArrayBuffer(b64), '', resolve, reject);
+        } catch (err) {
+          reject(err);
+        }
+      });
+    }
+
+    // Normalisasi model: deteksi sumbu "datar", putar ke Y-up, skala seragam ke
+    // ukuran target, lalu pusatkan di origin. Tanpa angka rotasi hardcode, jadi
+    // model pengganti di masa depan tetap pas tanpa menyentuh kode ini.
+    function fitObject(object, targetSpan, opts) {
+      opts = opts || {};
+      object.updateMatrixWorld(true);
+
+      let box = new THREE.Box3().setFromObject(object);
+      let size = box.getSize(new THREE.Vector3());
+
+      const flattest = Math.min(size.x, size.y, size.z);
+      const isZUp = Math.abs(flattest - size.z) < 1e-6 &&
+                    size.z < Math.min(size.x, size.y) * 0.35;
+
+      if (opts.autoUp !== false && isZUp) {
+        object.rotation.x = -Math.PI / 2;
+        object.updateMatrixWorld(true);
+        box = new THREE.Box3().setFromObject(object);
+        size = box.getSize(new THREE.Vector3());
+      }
+
+      const span = Math.max(size.x, size.z);
+      if (span > 0) object.scale.multiplyScalar(targetSpan / span);
+
+      object.updateMatrixWorld(true);
+      box = new THREE.Box3().setFromObject(object);
+      object.position.sub(box.getCenter(new THREE.Vector3()));
+
+      return object;
+    }
+
+    function prepModelMaterials(object) {
+      object.traverse((child) => {
+        if (!child.isMesh) return;
+        child.castShadow = true;
+        child.receiveShadow = true;
+
+        const mats = Array.isArray(child.material) ? child.material : [child.material];
+        mats.forEach((m) => {
+          if (!m) return;
+          if (m.map) m.map.encoding = THREE.sRGBEncoding;
+          if (m.emissiveMap) m.emissiveMap.encoding = THREE.sRGBEncoding;
+          m.envMapIntensity = 1.15;
+          m.needsUpdate = true;
+        });
+
+        const g = child.geometry;
+        if (g) {
+          modelStats.tris += (g.index ? g.index.count : g.attributes.position.count) / 3;
+        }
+      });
+    }
+
+    function clearGroup(group) {
+      while (group.children.length) group.remove(group.children[0]);
+    }
+
+    // Node rotor bernama Cylinder* pada model drone. Posisi diambil dari world
+    // matrix supaya transform-nya tidak perlu ditebak dari bbox.
+    function rotorPositionsFrom(model) {
+      model.updateMatrixWorld(true);
+      const found = [];
+      model.traverse((o) => {
+        if (!/^Cylinder(\.|$)/.test(o.name || '')) return;
+        found.push(o.getWorldPosition(new THREE.Vector3()));
+      });
+
+      const distinct = [];
+      found.forEach((p) => {
+        if (!distinct.some((q) => q.distanceTo(p) < 0.01)) distinct.push(p);
+      });
+      return distinct.length >= 4 ? distinct.slice(0, 4) : null;
+    }
+
+    function makeRotorBlur(radius) {
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = 128;
+      const ctx = canvas.getContext('2d');
+      const g = ctx.createRadialGradient(64, 64, 4, 64, 64, 64);
+      g.addColorStop(0.00, 'rgba(255,255,255,0)');
+      g.addColorStop(0.50, 'rgba(226,234,247,0.05)');
+      g.addColorStop(0.84, 'rgba(232,240,255,0.28)');
+      g.addColorStop(0.97, 'rgba(255,255,255,0.14)');
+      g.addColorStop(1.00, 'rgba(255,255,255,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(64, 64, 63, 0, Math.PI * 2);
+      ctx.fill();
+
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.encoding = THREE.sRGBEncoding;
+
+      const geo = new THREE.CircleGeometry(radius, 48);
+      geo.rotateX(-Math.PI / 2);
+
+      return new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+        map: tex,
+        transparent: true,
+        opacity: 0.22,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        side: THREE.DoubleSide
+      }));
+    }
+
+    function buildContactShadow() {
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = 128;
+      const ctx = canvas.getContext('2d');
+      const g = ctx.createRadialGradient(64, 64, 2, 64, 64, 62);
+      g.addColorStop(0.0, 'rgba(0,0,0,0.55)');
+      g.addColorStop(0.55, 'rgba(0,0,0,0.20)');
+      g.addColorStop(1.0, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, 128, 128);
+
+      const geo = new THREE.PlaneGeometry(6, 6);
+      geo.rotateX(-Math.PI / 2);
+
+      contactShadow = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+        map: new THREE.CanvasTexture(canvas),
+        transparent: true,
+        opacity: 0.4,
+        depthWrite: false
+      }));
+      contactShadow.renderOrder = 1;
+      scene.add(contactShadow);
+    }
+
+    // Jejak bidik kamera di permukaan tanah. Ini yang benar-benar menjelaskan
+    // "sedang memotret area ini", jauh lebih jelas daripada volume kerucut.
+    function buildScanFootprint() {
+      const size = 7.0;
+
+      const planeGeo = new THREE.PlaneGeometry(size, size);
+      planeGeo.rotateX(-Math.PI / 2);
+      const outline = new THREE.LineSegments(
+        new THREE.EdgesGeometry(planeGeo),
+        new THREE.LineBasicMaterial({ color: 0xffc48a, transparent: true, opacity: 0.55 })
+      );
+
+      const fillGeo = new THREE.PlaneGeometry(size, size);
+      fillGeo.rotateX(-Math.PI / 2);
+      const fill = new THREE.Mesh(fillGeo, new THREE.MeshBasicMaterial({
+        color: 0xe5a954,
+        transparent: true,
+        opacity: 0.05,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending
+      }));
+
+      scanFootprint = new THREE.Group();
+      scanFootprint.add(outline, fill);
+      scanFootprint.visible = false;
+      scene.add(scanFootprint);
+    }
+
+    function setAssetStatus(loaded, total, text) {
+      const dot = document.getElementById('asset-dot');
+      const label = document.getElementById('asset-text');
+      if (label) label.innerText = text;
+      if (!dot) return;
+      if (loaded === total && total > 0) {
+        dot.className = 'w-2 h-2 rounded-full bg-emerald-400';
+      } else if (loaded === 0) {
+        dot.className = 'w-2 h-2 rounded-full bg-flame animate-pulse';
+      } else {
+        dot.className = 'w-2 h-2 rounded-full bg-amber animate-pulse';
+      }
+    }
+
+    // scene.environment menerangi SEMUA MeshStandardMaterial, termasuk terrain
+    // dan pohon, sehingga scene jadi putih susu. Model GLB mendapat nilai
+    // sendiri di prepModelMaterials(); sisanya diredam di sini.
+    function tuneSceneMaterials() {
+      const seen = new Set();
+      scene.traverse((object) => {
+        if (!object.isMesh) return;
+        const mats = Array.isArray(object.material) ? object.material : [object.material];
+        mats.forEach((m) => {
+          if (!m || !m.isMeshStandardMaterial || seen.has(m)) return;
+          seen.add(m);
+          // Warna hex ditulis dalam sRGB, tapi three r128 (legacy color mode)
+          // memperlakukannya sebagai linear. Tanpa konversi ini seluruh scene
+          // prosedural tampil pucat seperti terkena kabut.
+          m.color.convertSRGBToLinear();
+          m.envMapIntensity = 0.22;
+          m.needsUpdate = true;
+        });
+      });
+    }
+
+    function applyGLBModels() {
+      const assets = window.PYRO_ASSETS || {};
+      const jobs = [];
+
+      // --- Drone frame ---------------------------------------------------
+      jobs.push(loadEmbeddedGLB(assets.drone).then((gltf) => {
+        const model = fitObject(gltf.scene, 4.6);
+        prepModelMaterials(model);
+
+        droneBodyGroup = new THREE.Group();
+        droneBodyGroup.add(model);
+
+        clearGroup(droneFrameMesh);
+        droneFrameMesh.add(droneBodyGroup);
+
+        // Rotor blur menggantikan prop prosedural yang ikut terhapus.
+        const size = new THREE.Box3().setFromObject(model).getSize(new THREE.Vector3());
+        let positions = rotorPositionsFrom(model);
+        if (!positions) {
+          const hx = size.x * 0.34;
+          const hz = size.z * 0.34;
+          positions = [
+            new THREE.Vector3(-hx, 0, -hz),
+            new THREE.Vector3(hx, 0, -hz),
+            new THREE.Vector3(-hx, 0, hz),
+            new THREE.Vector3(hx, 0, hz)
+          ];
+        }
+
+        const rotorRadius = Math.max(size.x, size.z) * 0.17;
+        rotorDiscs = positions.map((p) => {
+          const disc = makeRotorBlur(rotorRadius);
+          disc.position.set(p.x, 0.1, p.z);
+          droneFrameMesh.add(disc);
+          return disc;
+        });
+        droneGroup.props = rotorDiscs;
+
+        // Aksen amber di perut payload, bukan di dalam rotor.
+        const belly = new THREE.PointLight(0xe5a954, 1.2, 3.0);
+        belly.position.set(0, -0.35, 0);
+        droneFrameMesh.add(belly);
+
+        modelStats.loaded++;
+      }).catch((err) => {
+        modelStats.failed++;
+        console.warn('[PyroScan] drone GLB gagal, primitif prosedural dipakai:', err);
+      }));
+
+      // --- Smartphone ----------------------------------------------------
+      jobs.push(loadEmbeddedGLB(assets.phone).then((gltf) => {
+        const model = fitObject(gltf.scene, 1.70);
+        prepModelMaterials(model);
+        if (phoneGroupRef) {
+          clearGroup(phoneGroupRef);
+          phoneGroupRef.add(model);
+          phoneMesh = model;
+        }
+        modelStats.loaded++;
+      }).catch((err) => {
+        modelStats.failed++;
+        console.warn('[PyroScan] smartphone GLB gagal:', err);
+      }));
+
+      // --- ESP32 ---------------------------------------------------------
+      jobs.push(loadEmbeddedGLB(assets.esp32).then((gltf) => {
+        const model = fitObject(gltf.scene, 0.78);
+        prepModelMaterials(model);
+        if (esp32Mesh) {
+          clearGroup(esp32Mesh);
+          esp32Mesh.add(model);
+        }
+        modelStats.loaded++;
+      }).catch((err) => {
+        modelStats.failed++;
+        console.warn('[PyroScan] esp32 GLB gagal:', err);
+      }));
+
+      Promise.all(jobs).then(() => {
+        const tris = Math.round(modelStats.tris).toLocaleString('id-ID');
+        if (modelStats.failed === 0) {
+          setAssetStatus(3, 3, `ASET 3D: 3/3 · ${tris} TRIANGLES`);
+        } else if (modelStats.loaded > 0) {
+          setAssetStatus(modelStats.loaded, 3, `ASET 3D: ${modelStats.loaded}/3 · ${modelStats.failed} GAGAL (FALLBACK)`);
+        } else {
+          setAssetStatus(0, 3, 'ASET 3D: GAGAL · PRIMITIF PROSEDURAL');
+        }
+        if (new URLSearchParams(location.search).get('debug') === '1') debugDump();
+        if (typeof setCameraView === 'function') setCameraView(state.camView || 'free');
+      });
+    }
+
+    // Dev tool: daftar mesh di bawah payload beserta ukuran dunia aslinya.
+    // Dipakai untuk mendiagnosis objek tak dikenal tanpa membuka console.
+    function debugDump() {
+      const panel = document.createElement('pre');
+      panel.style.cssText = 'position:absolute;left:8px;bottom:8px;z-index:60;max-width:52vw;max-height:56vh;overflow:auto;' +
+        'background:rgba(10,11,16,.94);color:#c9f;font:10px/1.35 monospace;padding:8px;border:1px solid #444;border-radius:8px;white-space:pre-wrap';
+      const box = new THREE.Box3();
+      const size = new THREE.Vector3();
+      const center = new THREE.Vector3();
+      const origin = payloadGroup.getWorldPosition(new THREE.Vector3());
+
+      const rows = [];
+      scene.traverse((o) => {
+        if (!o.isMesh && !o.isPoints && !o.isLine) return;
+        box.setFromObject(o);
+        if (box.isEmpty()) return;
+        box.getSize(size);
+        box.getCenter(center);
+        const radius = Math.max(size.x, size.y, size.z) / 2;
+        const dist = center.distanceTo(origin);
+        if (radius < 0.25 || dist > 8) return;
+        const mat = Array.isArray(o.material) ? o.material[0] : o.material;
+        const hex = mat && mat.color ? '#' + mat.color.getHexString() : '-';
+        const blend = mat && mat.blending === THREE.AdditiveBlending ? 'ADD' : 'NRM';
+        rows.push({
+          text: `${(o.name || o.type).slice(0, 22).padEnd(22)} ${(o.geometry && o.geometry.type || '?').slice(0, 15).padEnd(15)} ` +
+                `r=${radius.toFixed(2)} d=${dist.toFixed(1)} ${hex} ${blend} ${(o.parent && o.parent.name) || o.parent.type}`,
+          radius
+        });
+      });
+
+      rows.sort((a, b) => b.radius - a.radius);
+      const kids = scene.children.map((c, i) => {
+        let near = false;
+        let bestR = 0;
+        c.traverse((o) => {
+          if (!o.isMesh) return;
+          const b = new THREE.Box3().setFromObject(o);
+          if (b.isEmpty()) return;
+          const ct = b.getCenter(new THREE.Vector3());
+          const r = b.getSize(new THREE.Vector3()).length() / 2;
+          if (ct.distanceTo(origin) < 2.5 && r > 0.3) {
+            near = true;
+            bestR = Math.max(bestR, r);
+          }
+        });
+        return `[${i}] ${(c.name || c.type).slice(0, 16).padEnd(16)} ${near ? 'NEAR r=' + bestR.toFixed(2) : ''}${c.visible ? '' : ' HIDDEN'}`;
+      });
+      panel.textContent = [`payload@${origin.toArray().map(v => v.toFixed(1)).join(',')} — ${rows.length} objek`]
+        .concat(rows.slice(0, 12).map(r => r.text))
+        .concat(['--- scene.children (NEAR = punya mesh dekat payload) ---'])
+        .concat(kids)
+        .join('\n');
+      document.body.appendChild(panel);
+    }
+
+    function updateEnhancements() {
+      if (droneBodyGroup) {
+        // Dipisah dari droneFrameMesh agar tidak bentrok dengan posisi
+        // exploded-view yang ditulis ke droneFrameMesh.position.
+        droneBodyGroup.position.y = Math.sin(state.elapsed * 1.6) * 0.045;
+        droneBodyGroup.rotation.z = Math.sin(state.elapsed * 0.9) * 0.012;
+      }
+
+      const flying = state.isSimRunning || state.simStage === 'LANDING';
+      rotorDiscs.forEach((disc) => {
+        const target = flying ? 0.55 : 0.20;
+        disc.material.opacity += (target - disc.material.opacity) * 0.08;
+      });
+
+      if (contactShadow && droneGroup) {
+        let groundY = 0;
+        if (terrainMeshRef) {
+          const ray = updateEnhancements._ray ||
+                      (updateEnhancements._ray = new THREE.Raycaster());
+          ray.set(
+            new THREE.Vector3(droneGroup.position.x, 40, droneGroup.position.z),
+            new THREE.Vector3(0, -1, 0)
+          );
+          const hit = ray.intersectObject(terrainMeshRef, false);
+          if (hit.length) groundY = hit[0].point.y;
+        }
+        const altitude = Math.max(0, droneGroup.position.y - groundY);
+        const spread = 1 + altitude * 0.05;
+        contactShadow.position.set(droneGroup.position.x, groundY + 0.08, droneGroup.position.z);
+        contactShadow.scale.set(spread, 1, spread);
+        contactShadow.material.opacity = Math.max(0.04, 0.5 - altitude * 0.028);
+
+        if (scanFootprint) {
+          scanFootprint.visible = flying && (!scanBeamMesh || scanBeamMesh.visible);
+          scanFootprint.position.set(droneGroup.position.x, groundY + 0.12, droneGroup.position.z);
+          const pulse = 1 + Math.sin(state.elapsed * 2.4) * 0.02;
+          scanFootprint.scale.set(pulse, 1, pulse);
+        }
+      }
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      state.elapsed = (state.elapsed || 0) + 0.016;
+
+      if (droneGroup && droneGroup.props) {
+        droneGroup.props.forEach(p => { p.rotation.y += (state.isSimRunning || state.simStage === 'LANDING') ? 0.5 : 0.05; });
+      }
+
+      if (state.isSimRunning && droneGroup && !state.isExploded && state.simStage !== 'LANDING') {
+        const targetWp = state.waypoints[state.currentWayIndex];
+        const currentPos = droneGroup.position;
+
+        currentPos.lerp(targetWp, 0.008 * state.simSpeed);
+        
+        const dir = new THREE.Vector3().subVectors(targetWp, currentPos).normalize();
+        droneGroup.rotation.z = -dir.x * 0.15;
+        droneGroup.rotation.x = dir.z * 0.15;
+
+        if (currentPos.distanceTo(state.lastPhotoPos) >= state.photoIntervalDist) {
+          state.lastPhotoPos.copy(currentPos);
+          triggerPhotoCapture();
+        }
+
+        if (currentPos.distanceTo(targetWp) < 0.8) {
+          state.currentWayIndex = (state.currentWayIndex + 1) % state.waypoints.length;
+        }
+
+        updateHUDCoordinates(currentPos);
+      }
+
+      if (state.simStage === 'LANDING') {
+        droneGroup.position.lerp(state.landingPos, 0.03);
+        droneGroup.rotation.set(0, 0, 0);
+        
+        state.syncProgress = Math.min(100, state.syncProgress + 1.2);
+        updateLaptopScreen('LANDING', state.syncProgress);
+
+        if (droneGroup.position.distanceTo(state.landingPos) < 0.15) {
+          state.simStage = 'SYNCING';
+          state.syncProgress = 0;
+          setCameraView('laptop');
+
+          const log = document.getElementById('ai-log');
+          if (log) {
+            const p = document.createElement('p');
+            p.className = 'text-amber font-bold';
+            p.innerText = `[${new Date().toLocaleTimeString().split(' ')[0]}] Drone Landed at Helipad. USB-C / Wi-Fi Syncing...`;
+            log.appendChild(p);
+            log.scrollTop = log.scrollHeight;
+          }
+        }
+      } else if (state.simStage === 'SYNCING') {
+        state.syncProgress += 0.8;
+        updateLaptopScreen('SYNCING', state.syncProgress);
+
+        if (state.syncProgress >= 100) {
+          state.simStage = 'RECONSTRUCTING';
+          state.syncProgress = 0;
+
+          const log = document.getElementById('ai-log');
+          if (log) {
+            const p = document.createElement('p');
+            p.className = 'text-flame font-bold';
+            p.innerText = `[${new Date().toLocaleTimeString().split(' ')[0]}] Launching NodeODM CUDA 3D & qwen3.5:4b Advisory.`;
+            log.appendChild(p);
+            log.scrollTop = log.scrollHeight;
+          }
+        }
+      } else if (state.simStage === 'RECONSTRUCTING') {
+        state.syncProgress += 0.6;
+        updateLaptopScreen('RECONSTRUCTING', state.syncProgress);
+
+        if (state.syncProgress >= 100) {
+          state.simStage = 'FINISHED';
+          updateLaptopScreen('FINISHED');
+
+          setSafeClass('sim-status-badge', "px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 text-[11px] font-mono font-bold flex items-center gap-1.5");
+          setSafeHTML('sim-status-badge', `<span class="w-2 h-2 rounded-full bg-emerald-400"></span> 3D MAP & REPORT READY`);
+
+          const log = document.getElementById('ai-log');
+          if (log) {
+            const p = document.createElement('p');
+            p.className = 'text-emerald-400 font-bold';
+            p.innerText = `[${new Date().toLocaleTimeString().split(' ')[0]}] 3D Orthomosaic DEM Map & Evacuation Advisory Rendered!`;
+            log.appendChild(p);
+            log.scrollTop = log.scrollHeight;
+          }
+        }
+      }
+
+      if (fireParticles) {
+        const pos = fireParticles.geometry.attributes.position;
+        // Sebelumnya indeksnya salah: loop melangkah 3 tapi memakai i/3,
+        // sehingga hanya sebagian partikel yang bergerak dan sumbunya keliru.
+        for (let i = 0; i < pos.count; i++) {
+          const y = pos.getY(i) + 0.045 + (i % 5) * 0.004;
+          if (y > 3.5) {
+            pos.setY(i, 0);
+            pos.setX(i, (Math.random() - 0.5) * 2.6);
+            pos.setZ(i, (Math.random() - 0.5) * 2.6);
+          } else {
+            pos.setY(i, y);
+            pos.setX(i, pos.getX(i) + Math.sin(state.elapsed * 1.7 + i) * 0.006);
+          }
+        }
+        pos.needsUpdate = true;
+      }
+
+      if (fireLightRef) {
+        fireLightRef.intensity = 2.0 + Math.sin(state.elapsed * 9.3) * 0.45 + Math.sin(state.elapsed * 23.1) * 0.22;
+      }
+
+      updateEnhancements();
+
+      if (state.camView === 'follow' && droneGroup) {
+        camera.position.set(droneGroup.position.x, droneGroup.position.y + 4, droneGroup.position.z + 12);
+        controls.target.copy(droneGroup.position);
+      } else if (state.camView === 'nadir' && droneGroup) {
+        camera.position.set(droneGroup.position.x, droneGroup.position.y - 1, droneGroup.position.z);
+        controls.target.set(droneGroup.position.x, 0, droneGroup.position.z);
+      }
+
+      controls.update();
+      renderer.render(scene, camera);
+    }
+
+    function updateHUDCoordinates(pos) {
+      const baseLat = -6.917524;
+      const baseLon = 107.619108;
+
+      const currentLat = (baseLat + pos.z * 0.0001).toFixed(6);
+      const currentLon = (baseLon + pos.x * 0.0001).toFixed(6);
+      const currentAlt = (40 + pos.y).toFixed(1);
+
+      setSafeText('hud-lat', currentLat);
+      setSafeText('hud-lon', currentLon);
+      setSafeText('hud-alt', `${currentAlt} m`);
+
+      setSafeText('hex-lat', currentLat);
+      setSafeText('hex-lon', currentLon);
+      setSafeText('hex-alt', `${currentAlt} m`);
+      setSafeText('hex-fire', `${state.confidenceScore}%`);
+    }
+
+    function setActiveTab(tab) {
+      state.activeTab = tab;
+      
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.remove('bg-amber', 'text-obsidian', 'shadow-lg', 'shadow-amber/20');
+        btn.classList.add('text-silver');
+      });
+
+      const activeBtn = document.getElementById(`tab-${tab}`);
+      if (activeBtn) {
+        activeBtn.classList.add('bg-amber', 'text-obsidian', 'shadow-lg', 'shadow-amber/20');
+        activeBtn.classList.remove('text-silver');
+      }
+
+      document.querySelectorAll('.tab-content').forEach(panel => panel.classList.add('hidden'));
+      const activePanel = document.getElementById(`panel-${tab}`);
+      if (activePanel) {
+        activePanel.classList.remove('hidden');
+      }
+
+      if (tab === 'inspect') {
+        setCameraView('payload');
+      } else if (tab === 'sim') {
+        setCameraView('free');
+      }
+    }
+
+    function selectComponent(compKey) {
+      state.selectedComp = compKey;
+      const data = compSpecs[compKey];
+      if (!data) return;
+
+      setSafeText('spec-title', data.title);
+      setSafeText('spec-subtitle', data.subtitle);
+      setSafeText('spec-weight', data.weight);
+      setSafeText('spec-desc', data.desc);
+
+      const listContainer = document.getElementById('spec-list');
+      if (listContainer) {
+        listContainer.innerHTML = data.list.map(item => 
+          `<li class="flex justify-between"><span class="text-white/60">${item[0]}</span> <strong class="text-white">${item[1]}</strong></li>`
+        ).join('');
+      }
+
+      setCameraView('payload');
+    }
+
+    function setCameraView(view) {
+      state.camView = view;
+      if (view === 'free') {
+        controls.target.set(-4, 4, -2);
+        camera.position.set(-4, 24, 30);
+      } else if (view === 'payload') {
+        const pWorld = new THREE.Vector3();
+        payloadGroup.getWorldPosition(pWorld);
+        controls.target.copy(pWorld);
+        camera.position.set(pWorld.x + 2.5, pWorld.y - 0.5, pWorld.z + 3.5);
+      } else if (view === 'posko') {
+        controls.target.set(-22, 1.5, 20);
+        camera.position.set(-22, 6, 27);
+      } else if (view === 'laptop') {
+        controls.target.set(-22.4, 1.55, 20);
+        camera.position.set(-22.4, 1.7, 20.8);
+      }
+    }
+
+    function toggleSimulation() {
+      state.isSimRunning = !state.isSimRunning;
+      state.simStage = state.isSimRunning ? 'MAPPING' : 'IDLE';
+
+      if (state.isSimRunning) {
+        setSafeHTML('btn-toggle-sim', `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg> Pause Simulasi`);
+        setSafeClass('sim-status-badge', "px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 text-[11px] font-mono font-bold flex items-center gap-1.5");
+        setSafeHTML('sim-status-badge', `<span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span> MAPPING ACTIVE`);
+
+        const log = document.getElementById('ai-log');
+        if (log) {
+          const p = document.createElement('p');
+          p.className = 'text-emerald-400 font-bold';
+          p.innerText = `[${new Date().toLocaleTimeString().split(' ')[0]}] Continuous Photogrammetry Capture STARTED (75% Overlap).`;
+          log.appendChild(p);
+          log.scrollTop = log.scrollHeight;
+        }
+      } else {
+        setSafeHTML('btn-toggle-sim', `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg> Mulai Simulasi Flight`);
+        setSafeClass('sim-status-badge', "px-2.5 py-1 rounded-full bg-amber/20 text-amber border border-amber/40 text-[11px] font-mono font-bold flex items-center gap-1.5");
+        setSafeHTML('sim-status-badge', `<span class="w-2 h-2 rounded-full bg-amber"></span> PAUSED (BERHENTI)`);
+      }
+    }
+
+    function resetSimulation() {
+      state.currentWayIndex = 0;
+      state.photoCount = 0;
+      state.simStage = 'IDLE';
+      droneGroup.position.copy(state.waypoints[0]);
+      state.lastPhotoPos.copy(state.waypoints[0]);
+
+      geotagMarkers.forEach(g => scene.remove(g));
+      geotagMarkers.length = 0;
+
+      updateLaptopScreen('STANDBY');
+      setSafeText('hud-photos', `0 Fotos`);
+      
+      const log = document.getElementById('ai-log');
+      if (log) {
+        log.innerHTML = `
+          <p class="text-emerald-400">[00:00] PyroScan Ready. Hardware initialized.</p>
+          <p class="text-silver">[00:00] Pre-programmed Lawnmower Path loaded (8 Waypoints).</p>
+          <p class="text-amber">[00:00] Status: RESET. Tekan "Mulai Simulasi Flight" untuk terbang.</p>
+        `;
+      }
+    }
+
+    function setSpeedMultiplier(val) {
+      state.simSpeed = val;
+      setSafeText('sim-speed-val', `${val}.0x (${(8.4 * val).toFixed(1)} m/s)`);
+
+      document.querySelectorAll('.speed-btn').forEach(btn => {
+        btn.classList.remove('bg-amber', 'text-obsidian');
+        btn.classList.add('bg-white/10', 'text-white');
+      });
+      if (event && event.target) {
+        event.target.classList.add('bg-amber', 'text-obsidian');
+        event.target.classList.remove('bg-white/10', 'text-white');
+      }
+    }
+
+    function toggleFlightPathLine(visible) {
+      if (flightPathLine) flightPathLine.visible = visible;
+    }
+
+    function toggleScanBeam(visible) {
+      if (scanBeamMesh) scanBeamMesh.visible = visible;
+    }
+
+    function toggleVectorArrow(visible) {
+      if (vectorArrow) vectorArrow.visible = visible;
+    }
+
+    function toggleLoraWaves(visible) {
+      state.showLoraWaves = visible;
+    }
+
+    function onWindowResize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    window.onload = function() {
+      initThree();
+    };
+  </script>
+</body>
+</html>

@@ -1,0 +1,76 @@
+{
+  "mission": {
+    "id": "SPIKE_BRIGHTON_ODM",
+    "mode": "PRE_FIRE",
+    "status": "DONE",
+    "area_m2": 7060,
+    "photos": 18,
+    "aligned": 18,
+    "align_ratio": 1.0,
+    "processing_s": 507,
+    "gsd_cm": 1.64,
+    "started_at": "2026-11-15T14:24:38+00:00",
+    "ended_at": "2026-11-15T14:45:27+00:00",
+    "stage": "DONE",
+    "stages": ["CAPTURE", "PHOTOGRAMMETRY", "FUSION", "SIMULATION", "ADVISORY", "DONE"]
+  },
+  "context": {
+    "name": "Brighton Beach",
+    "west": -92.0028,
+    "south": 46.8367,
+    "east": -91.9851,
+    "north": 46.8487,
+    "attribution": "Imagery © Esri, Maxar, Earthstar Geographics",
+    "source": "cached offline basemap"
+  },
+  "weather": {
+    "wind_speed_kmh": 24.5,
+    "wind_dir_deg": 225.0,
+    "temp_c": 31.2,
+    "humidity_pct": 38,
+    "source": "Open-Meteo (cached)",
+    "age_min": 12,
+    "simulated": true
+  },
+  "advisory": {
+    "severity": "HIGH",
+    "summary": "Api bergerak cepat ke arah timur laut mengikuti dorongan angin 24,5 km/jam dan lereng 32°. Dalam 60 menit, front diperkirakan mencapai area di luar perimeter pemetaan saat ini. Prioritaskan evakuasi sektor timur laut dan sekat bakar di kontur depan lidah api.",
+    "actions": [
+      "Evakuasi segera warga pada sektor yang dilalui arah rambat api.",
+      "Bangun firebreak/sekat bakar pada kontur yang ditentukan di depan lidah api.",
+      "Ajukan pemadaman udara (water bombing) pada koordinat prediksi.",
+      "Tingkatkan patroli dan pemantauan hotspot di sepanjang jalur prediksi."
+    ],
+    "model": "qwen3.5:4b-q4_K_M",
+    "seed": 42,
+    "prompt_sha": "a5b7295ccafc202b",
+    "draft": true,
+    "simulated": true
+  },
+  "hotspots": [
+    { "id": "SPOT_01", "u": 0.46, "v": 0.54, "confidence": 0.92, "smoke": 0.85, "slope_deg": 32.4, "age_min": 4 },
+    { "id": "SPOT_02", "u": 0.55, "v": 0.47, "confidence": 0.81, "smoke": 0.72, "slope_deg": 27.1, "age_min": 7 },
+    { "id": "SPOT_03", "u": 0.61, "v": 0.40, "confidence": 0.67, "smoke": 0.61, "slope_deg": 21.8, "age_min": 11 }
+  ],
+  "prediction": {
+    "wind_to_deg": 45.0,
+    "steps": [
+      { "min": 0, "area_ha": 0.71, "rate_m_min": 0.0 },
+      { "min": 30, "area_ha": 1.82, "rate_m_min": 22.4 },
+      { "min": 60, "area_ha": 3.41, "rate_m_min": 31.0 }
+    ],
+    "chart_area": [0.71, 0.82, 0.96, 1.12, 1.30, 1.50, 1.72, 1.96, 2.22, 2.55, 2.95, 3.41],
+    "chart_rate": [0, 5, 11, 17, 22, 19, 21, 25, 28, 31, 30, 31],
+    "key_events": [
+      { "time": "14:26", "label": "Ignition", "tone": "red" },
+      { "time": "14:31", "label": "First detection", "tone": "amber" },
+      { "time": "15:02", "label": "Payload capture", "tone": "muted" },
+      { "time": "15:10", "label": "Advisory drafted", "tone": "amber" },
+      { "time": "+45", "label": "Predicted ridge crossing", "tone": "red" }
+    ]
+  },
+  "flight_path": [
+    [0.18, 0.22], [0.38, 0.22], [0.38, 0.40], [0.18, 0.40],
+    [0.18, 0.58], [0.38, 0.58], [0.38, 0.76], [0.18, 0.76]
+  ]
+}

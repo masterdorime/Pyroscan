@@ -1,0 +1,34 @@
+# Local agent config / secrets
+opencode.json
+.env
+.env.*
+
+# Raw captures and reference video (large, not part of the runtime demo)
+spike/data/
+spike/ref/
+
+# Dependencies and generated artifacts
+spike/web/node_modules/
+spike/web/cesium-unminified/
+.playwright-mcp/
+server/cache/
+**/__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.log
+
+# Screenshots: keep only the current evidence set
+spike/shots/*
+!spike/shots/context-paper.png
+!spike/shots/context-obsidian.png
+!spike/shots/recon-paper.png
+!spike/shots/recon-obsidian.png
+!spike/shots/theme-menu-context.png
+!spike/shots/context-1180.png
+
+~$*
+*.tmp
+
+server/*.db-shm
+server/*.db-wal
