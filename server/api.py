@@ -19,6 +19,7 @@ from .pipeline import fusion as fusion_mod
 from .pipeline import weather as weather_mod
 from .providers.gateway import default_gateway
 from .providers.geo import mission_extent
+from .providers import cache as provider_cache
 
 app = FastAPI(title="PyroScan", version="0.1.0")
 app.add_middleware(
@@ -269,6 +270,9 @@ def _payload(mission: dict, background=None) -> dict:
             "ortho_shaded": f"/api/v1/missions/{mission['id']}/ortho_shaded.webp"
             if ortho_path and (ortho_path.parent / "ortho_shaded.webp").exists()
             else "/data/ortho_shaded.webp",
+            "context_dem": f"/api/v1/missions/{mission['id']}/context/dem"
+            if (provider_cache.mission_dir(mission["id"], gw.root)
+                / "context_dem.json").exists() else None,
         },
     }
 
@@ -434,6 +438,18 @@ def mission_regional_fires(mission_id: str, background: BackgroundTasks,
                     allow_fetch=allow_fetch and not gw.cfg.offline,
                     background=background)
     return asdict(result)
+
+
+@app.get("/api/v1/missions/{mission_id}/context/dem")
+def mission_context_dem(mission_id: str):
+    m = db.get_mission(_conn(), mission_id)
+    if not m:
+        raise HTTPException(404, "mission not found")
+    path = (provider_cache.mission_dir(mission_id, default_gateway().root)
+            / "context_dem.json")
+    if not path.exists():
+        raise HTTPException(404, "context dem not cached")
+    return FileResponse(path, media_type="application/json")
 
 
 @app.get("/api/v1/events")

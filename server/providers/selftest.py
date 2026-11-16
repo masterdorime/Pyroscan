@@ -1031,5 +1031,29 @@ def dem_adapter_writes_asset_and_payload():
     assert env["data"]["clipped"] is False
 
 
+@case
+def payload_exposes_context_dem_only_when_cached():
+    import tempfile
+    from pathlib import Path
+    import server.api as api_mod
+    from server import db
+    from server.providers.cache import write_asset
+
+    mission = db.get_mission(db.init_db(), "SPIKE_BRIGHTON_ODM")
+    assert mission
+    root = Path(tempfile.mkdtemp())
+    gw = _gw_from({"weather": (_Spy(),)}, root)
+    original = api_mod.default_gateway
+    api_mod.default_gateway = lambda: gw
+    try:
+        payload = api_mod._payload(mission, None)
+        assert payload["assets"].get("context_dem") in (None, "")
+        write_asset(mission["id"], "context_dem.json", b'{"width":1}', root=root)
+        payload = api_mod._payload(mission, None)
+        assert payload["assets"]["context_dem"].endswith("/context/dem")
+    finally:
+        api_mod.default_gateway = original
+
+
 if __name__ == "__main__":
     raise SystemExit(main())
