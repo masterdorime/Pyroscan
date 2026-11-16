@@ -67,6 +67,7 @@ function fail(e) {
   const hmUrl = (live && live.assets && live.assets.heightmap) || 'data/heightmap.json';
   const h = await fetch(hmUrl, { cache: 'no-store' }).then((r) => r.json());
   state.h = h; state.f = f;
+  loadContextImagery(live);
   state.orthoUrl = (live && live.assets && live.assets.ortho) || 'data/ortho.webp';
   state.orthoShadedUrl = (live && live.assets && live.assets.ortho_shaded) || 'data/ortho_shaded.webp';
   state.W = h.width; state.H = h.height;
@@ -316,12 +317,16 @@ function buildLandscape() {
     });
   };
   const collection = new C.PrimitiveCollection();
-  state.prims.landscapeCenter = quad(0.2, 0.8, 0.2, 0.8, false);  // opaque centre
+  // The imagery asset covers 4 km; the mosaic covers 1.35 km. Map only the
+  // matching sub-rectangle so the scene is not zoomed out by a factor of three.
+  const inner = 0.2;
+  const outer = 1 - inner;
+  state.prims.landscapeCenter = quad(inner, outer, inner, outer, false);  // opaque centre
   collection.add(state.prims.landscapeCenter);
-  collection.add(quad(0, 1, 0, 0.2, true));          // north band
-  collection.add(quad(0, 1, 0.8, 1, true));          // south band
-  collection.add(quad(0, 0.2, 0.2, 0.8, true));      // west band
-  collection.add(quad(0.8, 1, 0.2, 0.8, true));      // east band
+  collection.add(quad(0, 1, 0, inner, true));          // north band
+  collection.add(quad(0, 1, outer, 1, true));          // south band
+  collection.add(quad(0, inner, inner, outer, true));  // west band
+  collection.add(quad(outer, 1, inner, outer, true));  // east band
   state.viewer.scene.primitives.add(collection);
   state.prims.landscape = collection;
 }
@@ -492,6 +497,18 @@ function setMode(mode) {
   applySceneTheme();
   renderLegend();
   renderFiresInset();
+}
+
+/* ---------------- context imagery (Sentinel-2) ---------------- */
+const CONTEXT_TEXTURE = 'data/context_bright.png';
+
+function loadContextImagery(live) {
+  const url = live && live.assets && live.assets.context_imagery;
+  if (url) state.contextImageryUrl = url;
+}
+
+function contextTexture() {
+  return state.contextImageryUrl || CONTEXT_TEXTURE;
 }
 
 /* ---------------- context terrain (30 m DEM) ---------------- */
@@ -827,12 +844,15 @@ function renderProviders() {
     const item = providers.items && providers.items[key];
     if (!item) continue;
     const suffix = item.simulated ? ' · SIMULASI' : '';
-    const resolution = key === 'context_dem' ? ' · 30 m' : '';
+    let fact = '';
+    if (key === 'context_dem') fact = ' · 30 m';
+    if (key === 'context_imagery') fact = ' · 10 m source';
+    if (item.detail) fact += ` · ${item.detail}`;
     rows.push(
       `<li class="ld-row">`
       + `<i class="ld-dot" data-status="${item.status}" data-sim="${item.simulated}"></i>`
       + `<span class="ld-name">${item.source_label}</span>`
-      + `<span class="ld-age">${providerAgeLabel(item)}${resolution}${suffix}</span>`
+      + `<span class="ld-age">${providerAgeLabel(item)}${fact}${suffix}</span>`
       + `</li>`,
     );
     if (item.attribution) attributions.add(item.attribution);

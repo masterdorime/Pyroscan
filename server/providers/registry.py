@@ -39,4 +39,10 @@ def build_registry(cfg: ProviderConfig) -> dict[str, tuple[Provider, ...]]:
     except ImportError:
         pass
 
+    try:
+        from . import sentinel2
+        chains["context_imagery"] = (sentinel2.Sentinel2Provider(),)
+    except ImportError:
+        pass
+
     return chains

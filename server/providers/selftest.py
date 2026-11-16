@@ -1167,5 +1167,103 @@ def dem_reads_the_remote_cog_by_default():
     assert seen["source"].endswith(".tif")
 
 
+@case
+def s2_picks_the_least_cloudy_scene():
+    import json
+    from pathlib import Path
+    from server.providers import sentinel2
+    raw = json.loads(
+        (Path(__file__).parent / "fixtures/sentinel2/search.json").read_text(encoding="utf-8"))
+    scene = sentinel2.pick_scene(raw["features"])
+    assert scene is not None
+    assert scene["href"].endswith(".tif")
+    assert scene["acquired_at"].endswith("Z")
+    assert scene["cloud_pct"] <= 40.0
+    clouds = [float(f["properties"]["eo:cloud_cover"]) for f in raw["features"]]
+    assert scene["cloud_pct"] == min(clouds)
+
+
+@case
+def s2_returns_none_when_all_scenes_are_cloudy():
+    from server.providers import sentinel2
+    features = [{"id": "X", "properties": {"eo:cloud_cover": 91.0},
+                 "assets": {"visual": {"href": "https://x/TCI.tif"}}}]
+    assert sentinel2.pick_scene(features) is None
+
+
+@case
+def s2_adapter_writes_webp_asset_and_payload():
+    import tempfile
+    from pathlib import Path
+    import numpy as np
+    from server.providers.sentinel2 import Sentinel2Provider
+
+    def searcher(extent, **kwargs):
+        return [{"id": "S2B_TEST", "properties": {"eo:cloud_cover": 3.5,
+                                                  "datetime": "2026-10-02T16:31:00Z"},
+                 "assets": {"visual": {"href": "https://x/TCI.tif"}}}]
+
+    def reader(href, extent, size=1024):
+        return np.full((size, size, 3), 90, dtype="uint8")
+
+    root = Path(tempfile.mkdtemp())
+    gw = _gw_from({"context_imagery": (Sentinel2Provider(searcher=searcher,
+                                                         reader=reader),)}, root)
+    result = gw.refresh_now("M1", "context_imagery", _extent())
+
+    assert result.status == "fresh"
+    asset = mission_dir("M1", root) / "context_imagery.webp"
+    assert asset.exists() and asset.read_bytes()[:4] == b"RIFF"
+    env = read_envelope("M1", "context_imagery", root=root)
+    assert env["data"]["resolution_m"] == 10
+    assert env["data"]["scene_id"] == "S2B_TEST"
+    assert env["data"]["cloud_pct"] == 3.5
+    assert env["data"]["acquired_at"] == "2026-10-02T16:31:00Z"
+
+
+@case
+def s2_no_usable_scene_reports_unavailable():
+    import tempfile
+    from pathlib import Path
+    from server.providers.sentinel2 import Sentinel2Provider
+
+    def searcher(extent, **kwargs):
+        return []
+
+    root = Path(tempfile.mkdtemp())
+    gw = _gw_from({"context_imagery": (Sentinel2Provider(searcher=searcher),)}, root)
+    r = gw.refresh_now("M1", "context_imagery", _extent())
+    assert r.status == "error"
+    assert r.reason == "no_usable_scene"
+
+
+@case
+def s2_window_read_reprojects_into_the_tile_crs():
+    import tempfile
+    from pathlib import Path
+    import numpy as np
+    import rasterio
+    from rasterio.transform import from_origin
+    from rasterio.warp import transform
+
+    from server.providers.sentinel2 import read_scene_window
+
+    lat, lon = _extent().centre
+    xs, ys = transform("EPSG:4326", "EPSG:32615", [lon], [lat])
+    x, y = xs[0], ys[0]
+    size_px = 600
+    path = Path(tempfile.mkdtemp()) / "tci.tif"
+    profile = {"driver": "GTiff", "height": size_px, "width": size_px, "count": 3,
+               "dtype": "uint8", "crs": "EPSG:32615",
+               "transform": from_origin(x - size_px * 15, y + size_px * 15, 30, 30)}
+    data = np.full((3, size_px, size_px), 120, dtype="uint8")
+    with rasterio.open(path, "w", **profile) as ds:
+        ds.write(data)
+
+    out = read_scene_window(str(path), _extent(), size=32)
+    assert out.shape == (32, 32, 3)
+    assert out.mean() > 0
+
+
 if __name__ == "__main__":
     raise SystemExit(main())

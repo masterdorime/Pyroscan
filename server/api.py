@@ -80,6 +80,18 @@ def _age(iso: str | None) -> int:
         return 0
 
 
+def _provider_detail(result) -> str | None:
+    """Small, honest fact per row. Kept out of `data` so the payload stays small."""
+    data = result.data or {}
+    if result.key == "context_imagery" and data.get("acquired_at"):
+        cloud = data.get("cloud_pct")
+        when = str(data["acquired_at"])[:10]
+        return f"{when} · {round(cloud)}% cloud" if cloud is not None else when
+    if result.key == "context_dem" and data.get("clipped"):
+        return "clipped ring"
+    return None
+
+
 def providers_summary(results: dict, ring_km: float, offline: bool) -> dict:
     """Compact per-provider status for the dashboard. Never includes data or keys."""
     return {
@@ -96,6 +108,7 @@ def providers_summary(results: dict, ring_km: float, offline: bool) -> dict:
                 "reason": result.reason,
                 "configured": result.configured,
                 "fallback_from": result.fallback_from,
+                "detail": _provider_detail(result),
                 "attribution": result.attribution,
                 "licence": result.licence,
             }
@@ -268,6 +281,9 @@ def _payload(mission: dict, background=None) -> dict:
             "context_dem": f"/api/v1/missions/{mission['id']}/context/dem"
             if (provider_cache.mission_dir(mission["id"], gw.root)
                 / "context_dem.json").exists() else None,
+            "context_imagery": f"/api/v1/missions/{mission['id']}/context/imagery.webp"
+            if (provider_cache.mission_dir(mission["id"], gw.root)
+                / "context_imagery.webp").exists() else None,
         },
     }
 
@@ -445,6 +461,18 @@ def mission_context_dem(mission_id: str):
     if not path.exists():
         raise HTTPException(404, "context dem not cached")
     return FileResponse(path, media_type="application/json")
+
+
+@app.get("/api/v1/missions/{mission_id}/context/imagery.webp")
+def mission_context_imagery(mission_id: str):
+    m = db.get_mission(_conn(), mission_id)
+    if not m:
+        raise HTTPException(404, "mission not found")
+    path = (provider_cache.mission_dir(mission_id, default_gateway().root)
+            / "context_imagery.webp")
+    if not path.exists():
+        raise HTTPException(404, "context imagery not cached")
+    return FileResponse(path, media_type="image/webp")
 
 
 @app.get("/api/v1/events")
