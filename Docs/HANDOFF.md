@@ -358,9 +358,12 @@ imagery, OSM labels/place card. Real satellite fire is labelled
 limited by drone GPS/basemap registration, not by the hover code. OSM/Photon
 later supplies place names for a Google-like card. Do not imply survey accuracy.
 
-**Next step**: write the spec at `Docs/specs/2026-11-16-free-provider-layer-design.md`,
-run the spec self-review, ask the user to review it, then use `writing-plans`.
-Do not start provider implementation before that approval.
+**Next step**: the spec is **written and approved** at
+`Docs/specs/2026-11-16-free-provider-layer-design.md`, and Phase 1 has an
+implementation plan at `Docs/plans/2026-11-16-free-provider-layer-phase-1.md`.
+No provider code is written yet. Execute the plan task by task; Phase 1 is done
+when the spec's §16 acceptance criteria hold. Push after each phase and keep
+this file in sync.
 
 ---
 
@@ -438,11 +441,11 @@ Do not start provider implementation before that approval.
 3. The UI pivot and view revision are complete; review
    `spike/shots/context-paper.png`, `recon-paper.png`, `context-obsidian.png`,
    `recon-obsidian.png`, and `theme-menu-context.png`.
-4. **Current task:** write
-   `Docs/specs/2026-11-16-free-provider-layer-design.md` from §8, self-review
-   it, and ask the user to approve it. Do not implement providers before that.
-5. After spec approval: use `writing-plans`, then build Phase 1 (provider
-   framework + BMKG/Open-Meteo + FIRMS + source/age), then DEM, Sentinel-2,
-   OSM/Photon.
+4. **Current task:** execute
+   `Docs/plans/2026-11-16-free-provider-layer-phase-1.md` (the spec at
+   `Docs/specs/2026-11-16-free-provider-layer-design.md` is approved). Phase 1 =
+   provider framework + BMKG/Open-Meteo + FIRMS + source/age.
+5. After Phase 1: Phase 2 DEM, Phase 3 Sentinel-2, Phase 4 OSM/Photon, Phase 5
+   hardening — each gets its own plan from the same spec.
 6. Other lanes after/parallel: YOLO detections, watcher/NodeODM real mission,
    SSE progress, React/Vite port. Keep docs and screenshots in sync.
