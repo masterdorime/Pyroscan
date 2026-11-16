@@ -6,6 +6,7 @@ import traceback
 
 from .base import (Extent, ProviderConfig, ProviderError, ProviderPayload,
                    ProviderResult)
+from .config import load, redact
 from .geo import bearing_deg, haversine_km, mission_extent
 
 CASES: dict[str, object] = {}
@@ -63,6 +64,37 @@ def geo_distance_and_bearing():
     assert abs(haversine_km(-6.9, 107.6, -6.9, 107.61) - 1.108) < 0.01
     assert abs(bearing_deg(-6.9, 107.6, -6.9, 107.61) - 90.0) < 0.5
     assert abs(bearing_deg(-6.9, 107.6, -6.89, 107.6) - 0.0) < 0.5
+
+
+@case
+def config_env_beats_file():
+    import tempfile
+    from pathlib import Path
+    d = Path(tempfile.mkdtemp())
+    (d / ".env").write_text("PYROSCAN_FIRMS_MAP_KEY=fromfile\n", encoding="utf-8")
+    cfg = load(env_path=d / ".env", environ={"PYROSCAN_FIRMS_MAP_KEY": "fromenv"})
+    assert cfg.firms_map_key == "fromenv"
+
+
+@case
+def config_file_and_quotes():
+    import tempfile
+    from pathlib import Path
+    d = Path(tempfile.mkdtemp())
+    (d / ".env").write_text(
+        '# comment\nPYROSCAN_FIRMS_MAP_KEY="quoted"\nPYROSCAN_REGIONAL_RING_KM=22\n',
+        encoding="utf-8",
+    )
+    cfg = load(env_path=d / ".env", environ={})
+    assert cfg.firms_map_key == "quoted"
+    assert cfg.ring_km == 22.0
+
+
+@case
+def config_redacts_secret():
+    out = redact("GET https://firms.example/api/csv/SECRET123/VIIRS/1,2,3,4/1", "SECRET123")
+    assert "SECRET123" not in out
+    assert "***" in out
 
 
 if __name__ == "__main__":
