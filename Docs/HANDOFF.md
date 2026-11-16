@@ -1,6 +1,7 @@
 # PyroScan — Handoff
 
-**Date:** 2026-11-15
+**Date:** 2026-11-16
+**Repo:** https://github.com/masterdorime/Pyroscan (public, `main`). Raw drone data and the reference video are not committed; the demo DB, mission assets, Cesium bundle, and screenshots are.
 **Status:** working vertical slice; UI pivot complete + Context/Reconstruction view revision — Steps 1–4 done (paper skin, incident header + card rail, theme dropdown, elevation chart, bright landscape), with the patch hidden until opened.
 Read this first. Do not rebuild the pipeline.
 
