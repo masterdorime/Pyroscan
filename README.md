@@ -66,7 +66,7 @@ project) and the reference video are intentionally not committed.
 ```text
 server/                 FastAPI, SQLite, ODM client, fusion, spread, advisory
 spike/web/              dashboard shell, Cesium bundle, dashboard assets
-spike/missions/         prebuilt mission assets (heightmap, ortho, mesh)
+spike/missions/         prebuilt mission assets (heightmap, ortho, fusion)
 spike/tools/            ODM/dashboard asset builders
 simulation/             payload 3D studio prototype
 Docs/                   design spec, handoff, reference gallery

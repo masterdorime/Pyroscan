@@ -28,9 +28,29 @@ def _conn():
     return db.init_db()
 
 
+def _path(p: str | None) -> Path | None:
+    """Resolve stored paths from another machine after the repo is cloned."""
+    if not p:
+        return None
+    path = Path(p)
+    if path.exists():
+        return path
+    parts = path.parts
+    for i, part in enumerate(parts):
+        if part.lower() in ("spike", "server"):
+            candidate = config.ROOT.joinpath(*parts[i:])
+            if candidate.exists():
+                return candidate
+    if not path.is_absolute():
+        candidate = config.ROOT / path
+        if candidate.exists():
+            return candidate
+    return path
+
+
 def _hm(mission: dict) -> dict | None:
-    p = mission.get("heightmap_path")
-    if p and Path(p).exists():
+    p = _path(mission.get("heightmap_path"))
+    if p and p.exists():
         return fusion_mod.load_heightmap(p)
     fallback = config.WEB / "data" / "heightmap.json"
     return fusion_mod.load_heightmap(fallback) if fallback.exists() else None
@@ -133,6 +153,7 @@ def _payload(mission: dict) -> dict:
     conn = _conn()
     bundle = db.mission_bundle(conn, mission["id"])
     hm = _hm(mission)
+    ortho_path = _path(mission.get("ortho_path"))
     spots = []
     for s in bundle["hotspots"]:
         u, v = _uv(hm, s["lat"], s["lon"])
@@ -171,8 +192,7 @@ def _payload(mission: dict) -> dict:
             "ortho": f"/api/v1/missions/{mission['id']}/ortho.webp"
             if mission.get("ortho_path") else "/data/ortho.webp",
             "ortho_shaded": f"/api/v1/missions/{mission['id']}/ortho_shaded.webp"
-            if mission.get("ortho_path") and
-            (Path(mission["ortho_path"]).parent / "ortho_shaded.webp").exists()
+            if ortho_path and (ortho_path.parent / "ortho_shaded.webp").exists()
             else "/data/ortho_shaded.webp",
         },
     }
@@ -239,25 +259,28 @@ def mission_advisory(mission_id: str):
 @app.get("/api/v1/missions/{mission_id}/heightmap")
 def mission_heightmap(mission_id: str):
     m = db.get_mission(_conn(), mission_id)
-    if not m or not m.get("heightmap_path"):
+    p = _path(m.get("heightmap_path") if m else None)
+    if not p or not p.exists():
         raise HTTPException(404, "heightmap not found")
-    return FileResponse(m["heightmap_path"], media_type="application/json")
+    return FileResponse(p, media_type="application/json")
 
 
 @app.get("/api/v1/missions/{mission_id}/ortho.webp")
 def mission_ortho(mission_id: str):
     m = db.get_mission(_conn(), mission_id)
-    if not m or not m.get("ortho_path") or not Path(m["ortho_path"]).exists():
+    p = _path(m.get("ortho_path") if m else None)
+    if not p or not p.exists():
         raise HTTPException(404, "orthophoto not found")
-    return FileResponse(m["ortho_path"], media_type="image/webp")
+    return FileResponse(p, media_type="image/webp")
 
 
 @app.get("/api/v1/missions/{mission_id}/ortho_shaded.webp")
 def mission_ortho_shaded(mission_id: str):
     m = db.get_mission(_conn(), mission_id)
-    if not m or not m.get("ortho_path"):
+    p = _path(m.get("ortho_path") if m else None)
+    if not p:
         raise HTTPException(404, "orthophoto not found")
-    p = Path(m["ortho_path"]).parent / "ortho_shaded.webp"
+    p = p.parent / "ortho_shaded.webp"
     if not p.exists():
         raise HTTPException(404, "shaded orthophoto not found")
     return FileResponse(p, media_type="image/webp")
@@ -266,9 +289,10 @@ def mission_ortho_shaded(mission_id: str):
 @app.get("/api/v1/missions/{mission_id}/mesh.glb")
 def mission_mesh(mission_id: str):
     m = db.get_mission(_conn(), mission_id)
-    if not m or not m.get("mesh_path") or not Path(m["mesh_path"]).exists():
+    p = _path(m.get("mesh_path") if m else None)
+    if not p or not p.exists():
         raise HTTPException(404, "mesh not found")
-    return FileResponse(m["mesh_path"], media_type="model/gltf-binary")
+    return FileResponse(p, media_type="model/gltf-binary")
 
 
 @app.get("/api/v1/events")
