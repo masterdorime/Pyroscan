@@ -939,5 +939,92 @@ def dem_fetch_writes_complete_tile():
     assert out.exists() and out.read_bytes() == b"abcd"
 
 
+def _synthetic_dem(path, value=200.0, nodata=None, size=120,
+                   bounds=(-92.0, 46.0, -91.0, 47.0)):
+    import numpy as np
+    import rasterio
+    from rasterio.transform import from_bounds
+    data = np.full((size, size), value, dtype="float32")
+    if nodata is not None:
+        data[size // 2, size // 2] = nodata
+    profile = {"driver": "GTiff", "height": size, "width": size, "count": 1,
+               "dtype": "float32", "crs": "EPSG:4326", "tiled": True,
+               "blockxsize": 64, "blockysize": 64,
+               "transform": from_bounds(*bounds, size, size)}
+    if nodata is not None:
+        profile["nodata"] = nodata
+    with rasterio.open(path, "w", **profile) as ds:
+        ds.write(data, 1)
+
+
+@case
+def dem_crop_returns_ring_heightmap():
+    import tempfile
+    from pathlib import Path
+    from server.providers.copernicus_dem import crop_dem
+    path = Path(tempfile.mkdtemp()) / "tile.tif"
+    _synthetic_dem(path, value=250.0)
+    e = mission_extent({"west": -91.50, "south": 46.50, "east": -91.495, "north": 46.505}, 5)
+    out = crop_dem(path, e, size=64)
+    hm = out["heightmap"]
+    assert hm["width"] == 64 and hm["height"] == 64 and hm["mission_id"] == "context"
+    assert len(hm["heights_m"]) == 64 * 64
+    assert hm["h_min"] == hm["h_max"] == 250.0
+    assert out["clipped"] is False
+
+
+@case
+def dem_crop_reports_clipping_at_a_cell_edge():
+    import tempfile
+    from pathlib import Path
+    from server.providers.copernicus_dem import crop_dem
+    path = Path(tempfile.mkdtemp()) / "tile.tif"
+    _synthetic_dem(path)
+    e = mission_extent({"west": -92.01, "south": 46.84, "east": -91.99, "north": 46.86}, 5)
+    out = crop_dem(path, e, size=64)
+    assert out["clipped"] is True
+    assert out["bbox"]["west"] >= -92.0
+
+
+@case
+def dem_crop_excludes_nodata_from_the_range():
+    import tempfile
+    from pathlib import Path
+    from server.providers.copernicus_dem import crop_dem
+    path = Path(tempfile.mkdtemp()) / "tile.tif"
+    _synthetic_dem(path, value=250.0, nodata=-32767.0)
+    e = mission_extent({"west": -91.9, "south": 46.1, "east": -91.1, "north": 46.9}, 5)
+    out = crop_dem(path, e, size=64)
+    assert out["heightmap"]["h_min"] >= 0
+    assert out["nodata_px"] >= 1
+
+
+@case
+def dem_adapter_writes_asset_and_payload():
+    import tempfile
+    from pathlib import Path
+    from server.providers.copernicus_dem import (CopernicusDemProvider, cell_bounds,
+                                                 tile_name)
+
+    e = _extent()
+    tile = Path(tempfile.mkdtemp()) / "tile.tif"
+    _synthetic_dem(tile, value=310.0, bounds=cell_bounds(tile_name(*e.centre)))
+    prov = CopernicusDemProvider(
+        tile_fetcher=lambda name, dest: dest.write_bytes(tile.read_bytes()) or dest)
+
+    root = Path(tempfile.mkdtemp())
+    gw = _gw_from({"context_dem": (prov,)}, root)
+    result = gw.refresh_now("M1", "context_dem", e)
+
+    assert result.status == "fresh"
+    asset = mission_dir("M1", root) / "context_dem.json"
+    assert asset.exists()
+    env = read_envelope("M1", "context_dem", root=root)
+    assert env["data"]["asset"] == "context_dem.json"
+    assert env["data"]["source_resolution_m"] == 30
+    assert env["data"]["width"] == 256
+    assert env["data"]["clipped"] is False
+
+
 if __name__ == "__main__":
     raise SystemExit(main())

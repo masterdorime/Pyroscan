@@ -73,3 +73,63 @@ def fetch_tile(name: str, dest: Path, *, timeout: int = 45,
         dest.unlink(missing_ok=True)
         raise
     return dest
+
+
+def crop_dem(tile_path: Path, extent: Extent, size: int = 256) -> dict:
+    """Crop the tile to the ring and resample to a mission-format heightmap."""
+    import numpy as np
+    import rasterio
+    from rasterio.windows import from_bounds
+
+    with rasterio.open(tile_path) as ds:
+        bounds = ds.bounds
+        west = max(extent.west, bounds.left)
+        south = max(extent.south, bounds.bottom)
+        east = min(extent.east, bounds.right)
+        north = min(extent.north, bounds.top)
+        clipped = (west > extent.west or south > extent.south
+                   or east < extent.east or north < extent.north)
+        if west >= east or south >= north:
+            raise ProviderError("parse", "ring lies outside the DEM tile")
+        window = from_bounds(west, south, east, north, transform=ds.transform)
+        window = window.round_offsets().round_lengths()
+        array = ds.read(1, window=window, boundless=False)
+        nodata = ds.nodata
+
+    data = array.astype("float64")
+    if nodata is not None:
+        data[data == nodata] = np.nan
+    data[~np.isfinite(data)] = np.nan
+    nodata_px = int(np.isnan(data).sum())
+
+    finite = data[np.isfinite(data)]
+    fill = float(np.median(finite)) if finite.size else 0.0
+    data = np.where(np.isfinite(data), data, fill)
+
+    height, width = data.shape
+    rows = (np.arange(size) * (height / size)).astype(int).clip(0, height - 1)
+    cols = (np.arange(size) * (width / size)).astype(int).clip(0, width - 1)
+    small = data[rows][:, cols]
+
+    heightmap = {
+        "mission_id": "context",
+        "width": int(size),
+        "height": int(size),
+        "west": float(west),
+        "south": float(south),
+        "east": float(east),
+        "north": float(north),
+        "height_scale_m": 1.0,
+        "geoid_offset_m": 0.0,
+        "base_height_m": 0.0,
+        "h_min": float(small.min()),
+        "h_max": float(small.max()),
+        "heights_m": [float(v) for v in small.ravel()],
+    }
+    return {
+        "heightmap": heightmap,
+        "clipped": bool(clipped),
+        "nodata_px": nodata_px,
+        "bbox": {"west": float(west), "south": float(south),
+                 "east": float(east), "north": float(north)},
+    }

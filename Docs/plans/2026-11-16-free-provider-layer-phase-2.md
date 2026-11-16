@@ -232,7 +232,7 @@ def _synthetic_dem(path, value=200.0, nodata=None, size=120,
     from rasterio.transform import from_bounds
     data = np.full((size, size), value, dtype="float32")
     if nodata is not None:
-        data[0, 0] = nodata
+        data[size // 2, size // 2] = nodata
     profile = {"driver": "GTiff", "height": size, "width": size, "count": 1,
                "dtype": "float32", "crs": "EPSG:4326", "tiled": True,
                "blockxsize": 64, "blockysize": 64,
@@ -250,7 +250,7 @@ def dem_crop_returns_ring_heightmap():
     from server.providers.copernicus_dem import crop_dem
     path = Path(tempfile.mkdtemp()) / "tile.tif"
     _synthetic_dem(path, value=250.0)
-    e = mission_extent({"west": -91.99, "south": 46.84, "east": -91.985, "north": 46.845}, 5)
+    e = mission_extent({"west": -91.50, "south": 46.50, "east": -91.495, "north": 46.505}, 5)
     out = crop_dem(path, e, size=64)
     hm = out["heightmap"]
     assert hm["width"] == 64 and hm["height"] == 64 and hm["mission_id"] == "context"
