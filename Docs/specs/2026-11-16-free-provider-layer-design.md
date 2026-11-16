@@ -503,14 +503,43 @@ one cell wherever possible and record `source_tiles` when it cannot.
 The tile is downloaded once, cropped to a 256² ring heightmap, written to the
 cache, and discarded. No remote raster is kept.
 
-**Sentinel-2 re-check (Phase 3).** The same probe must be repeated against a
-`visual` COG before assuming 10 m windowed reads; the Sentinel-2 tiles are much
-larger (~700 MB), so a full-tile transfer would not fit any budget. If that
-probe also shows whole-object transfer, Phase 3 falls back to a STAC-resolved
-scene thumbnail and states its real resolution in the payload.
+**Sentinel-2 re-check (Phase 3) — ANSWERED 2026-11-16, gate FAILED.**
 
-Still true and unchanged: downloading a full Sentinel-2 tile is unacceptable, so
-Phase 3 does not begin until its own measurement says otherwise.
+Measured against a real scene over the Brighton demo area
+(`S2B_15TWM_20261002_0_L2A`, 0.0001 % cloud, Earth Search STAC, keyless):
+`TCI.tif` is 290.1 MB, EPSG:32615, 10 980², 1024² tiles, `Accept-Ranges: bytes`.
+
+| Probe | Result |
+|---|---|
+| 1.2 km window (123×85 px), bounds reprojected to the tile CRS | 1.7 s, **306 MB transferred**, one 290 MB response |
+| 25 km window (2451×1755 px) | 5.6 s, same total |
+| Scene `thumbnail` asset | 24.8 KB, **343×343 px** — ≈320 m/px over a 110 km scene |
+
+**Decision: do not implement windowed Sentinel-2 reads.** As with Copernicus, a
+correct, non-empty window still transfers the entire object. The same file shows
+the pattern a third time (S3 advertises ranges; GDAL fetches everything), so the
+cause is environmental and not worth chasing for this phase.
+
+**The spec's own contingency does not rescue it either.** Full tile is
+290–330 MB per mission, roughly 3–10× the entire per-mission budget and
+unusable on a field link. The thumbnail contingency is 343 px across 110 km —
+~320 m/px, which cannot serve a 1.35 km context mosaic.
+
+**Viable alternatives, for a decision (not yet chosen):**
+
+1. **Keyless Sentinel-2 tile service (measured, recommended).**
+   `https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2024_3857/default/g/{z}/{y}/{x}.jpg`
+   returned 200 with 2.5–4 KB JPEGs in ~0.6 s for z12, z14 and z16 over the demo
+   mission. A 1.35 km mosaic is a handful of tiles totalling tens of KB, versus
+   290 MB. Attribution EOX/ESA, CC BY. Same shape as the OSM path already
+   planned for Phase 4, so one tile cache serves both.
+2. **Keep the Esri prototype basemap** and accept the licensing limit for now;
+   ship Phase 4 (place names) before any imagery change.
+3. **Defer imagery entirely** and treat the DEM as the context improvement for
+   this release.
+
+Option 1 changes Phase 3's architecture from COG reading to tile fetching, so it
+needs a rewritten Phase 3 plan and a licence check on the EOx mosaic terms.
 
 ---
 
