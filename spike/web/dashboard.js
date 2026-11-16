@@ -95,6 +95,7 @@ function fail(e) {
   wireCamera();
   wireSceneClicks();
   populateRail();
+  renderProviders();
   wireUI();
   wireTheme();
   renderCharts();
@@ -698,6 +699,51 @@ function buildFootprint() {
 }
 
 /* ---------------- UI ---------------- */
+/* ---------------- live data card ---------------- */
+const PROVIDER_ORDER = ['weather', 'regional_fires', 'context_dem', 'context_imagery', 'places'];
+
+function providerAgeLabel(item) {
+  if (!item) return '—';
+  if (item.status === 'unconfigured') return 'add key to enable';
+  if (item.status === 'unavailable') return item.reason === 'warming' ? 'fetching…' : 'unavailable';
+  if (item.status === 'error' && item.reason === 'fixture_fallback') return 'offline sample';
+  if (item.age_s == null) return 'no data';
+  const mins = Math.round(item.age_s / 60);
+  if (mins < 60) return `${mins} min`;
+  const hours = Math.round(mins / 60);
+  if (hours < 48) return `${hours} h`;
+  return `${Math.round(hours / 24)} d`;
+}
+
+function renderProviders() {
+  const providers = state.f && state.f.providers;
+  const list = $('#ld-list');
+  const card = $('#live-data-card');
+  if (!list || !card) return;
+  if (!providers) { card.hidden = true; return; }
+
+  $('#ld-ring').textContent = `${Math.round(providers.ring_km || 0)} km ring`;
+  const rows = [];
+  const attributions = new Set();
+
+  for (const key of PROVIDER_ORDER) {
+    const item = providers.items && providers.items[key];
+    if (!item) continue;
+    const suffix = item.simulated ? ' · SIMULASI' : '';
+    rows.push(
+      `<li class="ld-row">`
+      + `<i class="ld-dot" data-status="${item.status}" data-sim="${item.simulated}"></i>`
+      + `<span class="ld-name">${item.source_label}</span>`
+      + `<span class="ld-age">${providerAgeLabel(item)}${suffix}</span>`
+      + `</li>`,
+    );
+    if (item.attribution) attributions.add(item.attribution);
+  }
+
+  list.innerHTML = rows.join('');
+  $('#ld-attrib').textContent = [...attributions].join(' · ');
+}
+
 function populateRail() {
   const f = state.f;
   const c = f.context;

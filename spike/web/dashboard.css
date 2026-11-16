@@ -493,3 +493,16 @@ button { cursor: pointer; }
 }
 
 
+
+/* ---- live data card ---- */
+.ld-list { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+.ld-row { display: grid; grid-template-columns: 8px 1fr auto; align-items: center; gap: 8px; font-size: 11px; }
+.ld-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+.ld-dot[data-status='fresh'] { background: var(--green); }
+.ld-dot[data-status='empty'] { background: transparent; border: 1px solid var(--green); }
+.ld-dot[data-status='stale'] { background: var(--amber); }
+.ld-dot[data-status='offline'], .ld-dot[data-status='error'] { background: var(--red); }
+.ld-dot[data-sim='true'] { background: var(--muted); }
+.ld-name { color: var(--text); }
+.ld-age { color: var(--muted); font-family: var(--mono); text-align: right; }
+.ld-attrib { margin-top: 8px; color: var(--muted); font-size: 9px; line-height: 1.4; }
