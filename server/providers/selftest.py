@@ -27,8 +27,11 @@ def case(fn):
 
 def main(argv: list[str] | None = None) -> int:
     names = list(sys.argv[1:] if argv is None else argv)
-    if "--live" in names:
+    live = "--live" in names
+    if live:
         names.remove("--live")
+    if live:
+        return live_smoke()
     selected = names or list(CASES)
     failed = 0
     for name in selected:
@@ -698,6 +701,50 @@ def weather_payload_maps_gateway_result():
     assert out["temp_c"] == 31.0 and out["wind_dir_deg"] == 145
     assert out["source"] == "bmkg" and out["simulated"] is False
     assert out["age_min"] == 5
+
+
+def live_smoke() -> int:
+    """One real call per adapter. Opt-in only: `--live`. Missing keys skip."""
+    import tempfile
+    from pathlib import Path
+
+    from .gateway import Gateway
+    from .geo import extent_from_point
+    from .registry import build_registry
+
+    cfg = load()
+    registry = build_registry(cfg)
+    if not registry:
+        print("no adapters registered")
+        return 0
+
+    gw = Gateway(registry, cfg, root=Path(tempfile.mkdtemp()))
+    extent = extent_from_point(-6.9, 107.6, 5.0)
+    failures = 0
+    for key in registry:
+        result = gw.refresh_now("live-smoke", key, extent)
+        if result.status in ("unconfigured", "unavailable"):
+            print(f"skipped {key}: {result.status} ({result.reason})")
+        elif result.status in ("error", "offline"):
+            print(f"FAIL {key}: {result.reason}")
+            failures += 1
+        else:
+            print(f"ok {key}: {result.status} source={result.source} age={result.age_s}s")
+    return 1 if failures else 0
+
+
+@case
+def warm_cache_survives_a_failed_refresh_as_offline():
+    import tempfile
+    from pathlib import Path
+    root = Path(tempfile.mkdtemp())
+    spy = _Spy(data={"wind_speed_kmh": 7})
+    gw = _gw(spy, root)
+    gw.refresh_now("M1", "weather", _extent())
+    spy.boom = ProviderError("network", "reset")
+    r = gw.refresh_now("M1", "weather", _extent())
+    assert r.status == "offline"
+    assert r.data and r.data["wind_speed_kmh"] == 7
 
 
 if __name__ == "__main__":

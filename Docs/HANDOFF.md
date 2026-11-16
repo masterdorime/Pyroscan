@@ -2,7 +2,30 @@
 
 **Date:** 2026-11-16
 **Repo:** https://github.com/masterdorime/Pyroscan (public, `main`). Raw drone data and the reference video are not committed; the demo DB, mission assets, Cesium bundle, and screenshots are.
-**Status:** working vertical slice; UI pivot complete + Context/Reconstruction view revision — Steps 1–4 done. **Current focus: planning the free provider layer (BMKG/Open-Meteo/FIRMS/Copernicus DEM/Sentinel-2/OSM) — no provider code or approved spec yet.**
+**Status: Phase 1 shipped** — provider gateway + BMKG/Open-Meteo weather +
+NASA FIRMS regional detections + per-provider source/age in the API and
+dashboard. Phases 2–5 (Copernicus DEM, Sentinel-2, OSM/Photon, hardening) are
+planned, not built. Spec: `Docs/specs/2026-11-16-free-provider-layer-design.md`;
+plan: `Docs/plans/2026-11-16-free-provider-layer-phase-1.md`.
+
+**Architecture (Phase 1).** `server/providers/` holds one adapter per source and
+one `Gateway` that owns a per-mission file cache, read-time status derivation,
+fallback chains, and single-flight background refresh. The API calls the
+gateway; the browser calls only the API. Cache lives in
+`server/cache/providers/<mission_id>/` (gitignored). Statuses: `fresh`, `stale`,
+`offline`, `empty`, `unconfigured`, `unavailable`, `error` — derived from
+timestamps on every read, never stored.
+
+**What is real now.** Weather is Open-Meteo for Brighton (BMKG needs an `adm4`
+code and the bundled index ships empty, so BMKG reports `unavailable` there and
+for any mission outside Indonesia once the index is populated). FIRMS is
+**unconfigured** until `PYROSCAN_FIRMS_MAP_KEY` is set in `.env`; the inset says
+"add MAP_KEY to enable" and shows nothing fake. Heat, wind vectors, prediction
+geometry, severity and advisory remain fixtures marked SIMULASI.
+
+**Still open.** Populate `adm4_index.json` from a licence-cleared boundary
+dataset (§15.1). Verify the FIRMS parser against a real capture — the committed
+CSV is synthetic. Phase 2 opens with the COG-reader gate (§7.5).
 Read this first. Do not rebuild the pipeline.
 
 ---
@@ -85,7 +108,7 @@ Android payload ──Wi-Fi bulk──► photo folder ──watcher──► No
 |---|---|
 | `server/api.py` | REST + SSE + static dashboard; path rebase for clone |
 | `Docs/NEXT_AGENT_PROMPT.md` | copy-paste handoff prompt for the next agent |
-| **Planned** `server/providers/` | provider adapters + cache/TTL (not built) |
+| `server/providers/` | provider adapters, gateway, cache/TTL, prefetch CLI, selftest |
 | `server/db.py` | SQLite schema and queries |
 | `server/pipeline/runner.py` | mission orchestration |
 | `server/pipeline/assets.py` | ODM → heightmap/ortho/shaded ortho |
@@ -358,12 +381,11 @@ imagery, OSM labels/place card. Real satellite fire is labelled
 limited by drone GPS/basemap registration, not by the hover code. OSM/Photon
 later supplies place names for a Google-like card. Do not imply survey accuracy.
 
-**Next step**: the spec is **written and approved** at
-`Docs/specs/2026-11-16-free-provider-layer-design.md`, and Phase 1 has an
-implementation plan at `Docs/plans/2026-11-16-free-provider-layer-phase-1.md`.
-No provider code is written yet. Execute the plan task by task; Phase 1 is done
-when the spec's §16 acceptance criteria hold. Push after each phase and keep
-this file in sync.
+**Next step**: Phase 1 is implemented and committed. Remaining before Phase 2:
+populate the `adm4` index, set `PYROSCAN_FIRMS_MAP_KEY` and capture a real FIRMS
+CSV to replace the synthetic fixture. Then start Phase 2 from
+`Docs/specs/2026-11-16-free-provider-layer-design.md` §13 (its first task is the
+COG-reader gate, §7.5). Keep this file in sync and push after each phase.
 
 ---
 
@@ -393,8 +415,10 @@ this file in sync.
     the camera frustum/heading overlay is not implemented.
 14. **Context footprint is an area-equivalent disc** (0.71 ha), not the exact
     irregular ortho boundary. An alpha-contour footprint would be more precise.
-15. **Provider layer is not implemented.** BMKG/Open-Meteo/FIRMS/Copernicus
-    DEM/Sentinel-2/OSM are planned only; the spec is not written.
+15. **Provider layer is Phase 1 only.** Weather (BMKG/Open-Meteo) and regional
+    FIRMS detections ship with source/age. Copernicus DEM, Sentinel-2 imagery and
+    OSM/Photon are still planned. `adm4_index.json` ships empty, the FIRMS fixture
+    is synthetic, and no real FIRMS capture has been parsed yet.
 16. **Cursor coordinate readout is not implemented.** The top bar shows the
     mission centre, not the mouse. Hover math is local; absolute accuracy is
     limited by drone GPS and basemap registration.

@@ -57,7 +57,43 @@ python -m server.watcher --interval 5
 | GET | `/api/v1/missions/{id}/ortho.webp` | orthophoto |
 | GET | `/api/v1/missions/{id}/ortho_shaded.webp` | hillshaded orthophoto |
 | GET | `/api/v1/missions/{id}/mesh.glb` | textured mesh |
+| GET | `/api/v1/missions/{id}/providers` | per-provider status, source, age |
+| GET | `/api/v1/missions/{id}/providers/{key}` | one provider result |
+| POST | `/api/v1/missions/{id}/providers/refresh` | queue a refresh (202) |
+| GET | `/api/v1/missions/{id}/regional_fires` | NASA FIRMS detections in the ring |
 | GET | `/api/v1/events` | SSE heartbeat (mission events next) |
+
+## Providers (Phase 1)
+
+Weather and regional fire detections come from free public sources through a
+gateway in `server/providers/`. The browser never calls a provider.
+
+| Key | Chain | Key needed | TTL |
+|---|---|---|---|
+| `weather` | BMKG → Open-Meteo | none | 20 min |
+| `regional_fires` | NASA FIRMS NRT | `PYROSCAN_FIRMS_MAP_KEY` | 2 h |
+
+- Cache: `server/cache/providers/<mission_id>/<key>.envelope.json` (gitignored,
+  disposable — delete a mission's folder to force a refetch).
+- Status is derived on read: `fresh`, `stale`, `offline`, `empty`,
+  `unconfigured`, `unavailable`, `error`. A provider that is down returns HTTP
+  200 with a non-fresh status, never a 5xx.
+- A missing key is `unconfigured`, not an error.
+- No cache at all and every source failing → committed fixture, `simulated: true`.
+- BMKG needs an `adm4` code. It auto-resolves from
+  `server/providers/data/adm4_index.json`, which **ships empty**; until the
+  boundary dataset is cleared, BMKG reports `unavailable` and Open-Meteo answers.
+
+```powershell
+# one real call per provider (opt-in; skips missing keys)
+python -m server.providers.selftest --live
+
+# offline self-check (no network)
+python -m server.providers.selftest
+
+# warm a mission's cache before deploying offline
+python -m server.providers.prefetch --mission <id>
+```
 
 ## Verified numbers (Brighton)
 

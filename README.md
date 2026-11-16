@@ -88,9 +88,12 @@ Docs/                   design spec, handoff, reference gallery
 
 This is a working vertical slice, not a production deployment. Known gaps:
 
-- **Next:** a free provider layer (BMKG/Open-Meteo, NASA FIRMS, Copernicus DEM,
-  Sentinel-2, OSM/Photon). Planning is in progress; see
-  `Docs/NEXT_AGENT_PROMPT.md` and `Docs/HANDOFF.md` §8.
+- **Provider layer (Phase 1, shipped):** weather and wind come from BMKG
+  (Indonesia) with Open-Meteo as the global fallback, and regional active-fire
+  detections from NASA FIRMS NRT. Every reading shows its source and age, and a
+  **Live data** card lists them. Phase 2–5 (Copernicus DEM, Sentinel-2 imagery,
+  OSM/Photon place names) are planned but not built. See
+  `Docs/specs/2026-11-16-free-provider-layer-design.md`.
 - YOLO fire/smoke detections are not wired; hotspot positions are fixtures.
 - The watcher/NodeODM path has not been exercised on a new flight.
 - Heat, wind, prediction geometry, severity, weather, and advisory are fixtures.

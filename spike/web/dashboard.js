@@ -743,7 +743,10 @@ function renderProviders() {
   }
 
   list.innerHTML = rows.join('');
-  $('#ld-attrib').textContent = [...attributions].join(' · ');
+  const footer = [...attributions].join(' · ');
+  $('#ld-attrib').textContent = providers.offline
+    ? `OFFLINE — cached data${footer ? ` · ${footer}` : ''}`
+    : footer;
 }
 
 /* ---------------- weather source line ---------------- */
