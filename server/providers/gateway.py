@@ -182,6 +182,11 @@ class Gateway:
                 last_error = exc
                 failed_ids.append(adapter.id)
                 continue
+            except Exception as exc:  # last resort: never let a provider crash the API
+                failures += 1
+                last_error = ProviderError("parse", f"{type(exc).__name__}: {exc}")
+                failed_ids.append(adapter.id)
+                continue
             env = self._envelope(key, adapter, payload.observed_at, payload.data,
                                  fail_count=failures,
                                  fallback_from=(failed_ids[0] if failed_ids else None))

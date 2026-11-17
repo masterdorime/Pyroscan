@@ -1265,5 +1265,39 @@ def s2_window_read_reprojects_into_the_tile_crs():
     assert out.mean() > 0
 
 
+@case
+def s2_skips_a_scene_that_does_not_cover_the_window():
+    import tempfile
+    from pathlib import Path
+    import numpy as np
+    from server.providers.sentinel2 import Sentinel2Provider
+
+    def searcher(extent, **kwargs):
+        return [
+            {"id": "S2B_WRONG_TILE", "properties": {"eo:cloud_cover": 0.1,
+                                                    "datetime": "2026-10-02T16:31:00Z"},
+             "assets": {"visual": {"href": "https://x/15TWM/TCI.tif"}}},
+            {"id": "S2B_RIGHT_TILE", "properties": {"eo:cloud_cover": 0.2,
+                                                    "datetime": "2026-10-02T16:31:00Z"},
+             "assets": {"visual": {"href": "https://x/15TWN/TCI.tif"}}},
+        ]
+
+    tried = []
+
+    def reader(href, extent, size=1024):
+        tried.append(href)
+        if "/15TWM/" in href:
+            raise ProviderError("parse", "ring lies outside the imagery tile")
+        return np.full((size, size, 3), 80, dtype="uint8")
+
+    root = Path(tempfile.mkdtemp())
+    gw = _gw_from({"context_imagery": (Sentinel2Provider(searcher=searcher,
+                                                         reader=reader),)}, root)
+    result = gw.refresh_now("M1", "context_imagery", _extent())
+    assert result.status == "fresh"
+    assert len(tried) == 2
+    assert result.data["scene_id"] == "S2B_RIGHT_TILE"
+
+
 if __name__ == "__main__":
     raise SystemExit(main())

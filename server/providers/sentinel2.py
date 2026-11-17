@@ -90,6 +90,18 @@ def _tci_href(feature: dict) -> str | None:
 
 def pick_scene(features: list[dict], *, max_cloud: float = MAX_CLOUD) -> dict | None:
     """Least-cloudy usable scene, or None. Cloud is scene-level, not site-level."""
+    candidates = pick_scenes(features, max_cloud=max_cloud)
+    return candidates[0] if candidates else None
+
+
+def pick_scenes(features: list[dict], *, max_cloud: float = MAX_CLOUD) -> list[dict]:
+    """All usable scenes, least cloudy first.
+
+    A scene can intersect the search area while its own tile does not contain the
+    window we read, so the adapter tries these in order rather than trusting the
+    first one.
+    """
+    out: list[dict] = []
     for feature in features:
         props = feature.get("properties") or {}
         href = _tci_href(feature)
@@ -102,13 +114,13 @@ def pick_scene(features: list[dict], *, max_cloud: float = MAX_CLOUD) -> dict | 
             continue
         if cloud_pct > max_cloud:
             continue
-        return {
+        out.append({
             "scene_id": feature.get("id"),
             "acquired_at": _iso(props.get("datetime")),
             "cloud_pct": cloud_pct,
             "href": href,
-        }
-    return None
+        })
+    return out
 
 
 def grade_like_context(pixels, *, size: int = 512):
@@ -148,24 +160,35 @@ def read_scene_window(source: str, extent: Extent, *, size: int = SIZE):
     from rasterio.warp import transform_bounds
     from rasterio.windows import from_bounds
 
-    with rasterio.open(source) as ds:
-        left, bottom, right, top = transform_bounds(
-            "EPSG:4326", ds.crs,
-            extent.west, extent.south, extent.east, extent.north)
-        bounds = ds.bounds
-        left = max(left, bounds.left)
-        bottom = max(bottom, bounds.bottom)
-        right = min(right, bounds.right)
-        top = min(top, bounds.top)
-        if left >= right or bottom >= top:
-            raise ProviderError("parse", "ring lies outside the imagery tile")
-        window = from_bounds(left, bottom, right, top,
-                             transform=ds.transform).round_offsets().round_lengths()
-        if window.width < 1 or window.height < 1:
-            raise ProviderError("parse", "empty imagery window")
-        bands = ds.count
-        picked = [1, 2, 3] if bands >= 3 else [1]
-        array = ds.read(picked, window=window)
+    # Remote opens have no Python-level timeout: without these a stalled HTTPS
+    # request pins the gateway's single-flight claim indefinitely.
+    with rasterio.Env(GDAL_HTTP_TIMEOUT="30", GDAL_HTTP_CONNECTTIMEOUT="10",
+                      GDAL_DISABLE_READDIR_ON_OPEN="EMPTY_DIR"):
+        try:
+            with rasterio.open(source) as ds:
+                left, bottom, right, top = transform_bounds(
+                    "EPSG:4326", ds.crs,
+                    extent.west, extent.south, extent.east, extent.north)
+                bounds = ds.bounds
+                left = max(left, bounds.left)
+                bottom = max(bottom, bounds.bottom)
+                right = min(right, bounds.right)
+                top = min(top, bounds.top)
+                if left >= right or bottom >= top:
+                    raise ProviderError("parse", "ring lies outside the imagery tile")
+                window = from_bounds(left, bottom, right, top,
+                                     transform=ds.transform).round_offsets().round_lengths()
+                if window.width < 1 or window.height < 1:
+                    raise ProviderError("parse", "empty imagery window")
+                bands = ds.count
+                picked = [1, 2, 3] if bands >= 3 else [1]
+                array = ds.read(picked, window=window)
+        except ProviderError:
+            raise
+        except Exception as exc:
+            # rasterio raises RasterioIOError for remote read failures; the
+            # gateway must only ever see typed provider errors.
+            raise ProviderError("network", f"imagery read failed: {type(exc).__name__}") from None
 
     if array.size == 0:
         raise ProviderError("parse", "empty imagery window")
@@ -206,10 +229,23 @@ class Sentinel2Provider:
         # Search by the window we will read, not the whole ring: a scene that
         # clips the ring edge need not contain the mosaic centre at all.
         window = imagery_extent(extent)
-        scene = pick_scene(self.searcher(window))
-        if scene is None:
+        candidates = pick_scenes(self.searcher(window))
+        if not candidates:
             raise ProviderError("missing", "no_usable_scene")
-        pixels = self.reader(scene["href"], window, size=self.size)
+
+        pixels = None
+        scene = None
+        last_error: ProviderError | None = None
+        for candidate in candidates[:3]:
+            try:
+                pixels = self.reader(candidate["href"], window, size=self.size)
+                scene = candidate
+                break
+            except ProviderError as exc:
+                last_error = exc
+                continue
+        if scene is None or pixels is None:
+            raise last_error or ProviderError("missing", "no_usable_scene")
         data = {
             "bbox": {"west": window.west, "south": window.south,
                      "east": window.east, "north": window.north},
