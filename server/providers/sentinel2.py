@@ -111,6 +111,31 @@ def pick_scene(features: list[dict], *, max_cloud: float = MAX_CLOUD) -> dict | 
     return None
 
 
+def grade_like_context(pixels, *, size: int = 512):
+    """The same look the cached Esri context was graded with.
+
+    Copied from `spike/tools/make_dashboard_assets.py` so Sentinel-2 reads as
+    part of the same paper landscape: lift shadows, gentle contrast, +18 %
+    saturation, a warm channel bias, exposure, then unsharp.
+    """
+    import numpy as np
+    from PIL import Image, ImageFilter
+
+    image = Image.fromarray(pixels.astype("uint8"), "RGB").resize(
+        (size, size), Image.BILINEAR)
+    arr = np.asarray(image).astype(np.float32) / 255.0
+    arr = np.power(arr, 0.86)                       # lift the shadows
+    arr = np.clip((arr - 0.5) * 1.08 + 0.5, 0, 1)   # gentle contrast
+    gray = arr @ np.array([0.299, 0.587, 0.114], dtype=np.float32)
+    arr = np.clip(gray[..., None] + (arr - gray[..., None]) * 1.18, 0, 1)
+    arr[..., 0] *= 1.07
+    arr[..., 1] *= 1.02
+    arr[..., 2] *= 0.94
+    arr = np.clip(arr * 1.12, 0, 1)
+    return Image.fromarray((arr * 255).astype("uint8"), "RGB").filter(
+        ImageFilter.UnsharpMask(radius=1, percent=60, threshold=6))
+
+
 def read_scene_window(source: str, extent: Extent, *, size: int = SIZE):
     """Windowed RGB read, reprojecting the ring into the tile's own CRS.
 
@@ -145,21 +170,11 @@ def read_scene_window(source: str, extent: Extent, *, size: int = SIZE):
     if array.size == 0:
         raise ProviderError("parse", "empty imagery window")
     if array.shape[0] >= 3:
-        pixels = np.transpose(array[:3], (1, 2, 0)).astype("float32")
+        pixels = np.transpose(array[:3], (1, 2, 0)).astype("uint8")
     else:
-        pixels = np.repeat(np.transpose(array[:1], (1, 2, 0)), 3, axis=2).astype("float32")
+        pixels = np.repeat(np.transpose(array[:1], (1, 2, 0)), 3, axis=2).astype("uint8")
 
-    # Raw TCI is dark; stretch each channel to its 2nd-98th percentile. This is a
-    # display stretch only - scene_id and acquisition date travel with the image.
-    flat = pixels.reshape(-1, 3)
-    lo, hi = np.percentile(flat, (2, 98), axis=0)
-    span = np.where(hi > lo, hi - lo, 1.0)
-    stretched = np.clip((pixels - lo) * (255.0 / span), 0, 255)
-    pixels = np.where((hi > lo).reshape(1, 1, 3), stretched, pixels)
-
-    image = Image.fromarray(pixels.astype("uint8"), "RGB").resize(
-        (size, size), Image.BILINEAR)
-    return np.asarray(image)
+    return np.asarray(grade_like_context(pixels, size=size))
 
 
 def encode_webp(pixels, *, quality: int = 82) -> bytes:
@@ -188,10 +203,12 @@ class Sentinel2Provider:
         self.size = size
 
     def fetch(self, extent: Extent, cfg: ProviderConfig) -> ProviderPayload:
-        scene = pick_scene(self.searcher(extent))
+        # Search by the window we will read, not the whole ring: a scene that
+        # clips the ring edge need not contain the mosaic centre at all.
+        window = imagery_extent(extent)
+        scene = pick_scene(self.searcher(window))
         if scene is None:
             raise ProviderError("missing", "no_usable_scene")
-        window = imagery_extent(extent)
         pixels = self.reader(scene["href"], window, size=self.size)
         data = {
             "bbox": {"west": window.west, "south": window.south,

@@ -323,10 +323,14 @@ function buildLandscape() {
   const outer = 1 - inner;
   state.prims.landscapeCenter = quad(inner, outer, inner, outer, false);  // opaque centre
   collection.add(state.prims.landscapeCenter);
-  collection.add(quad(0, 1, 0, inner, true));          // north band
-  collection.add(quad(0, 1, outer, 1, true));          // south band
-  collection.add(quad(0, inner, inner, outer, true));  // west band
-  collection.add(quad(outer, 1, inner, outer, true));  // east band
+  if (!state.contextImageryUrl) {
+    // Feathered bands exist to fade the Esri PNG's alpha edge. Sentinel-2 is
+    // opaque, and translucent quads over the bright terrain compound to white.
+    collection.add(quad(0, 1, 0, inner, true));          // north band
+    collection.add(quad(0, 1, outer, 1, true));          // south band
+    collection.add(quad(0, inner, inner, outer, true));  // west band
+    collection.add(quad(outer, 1, inner, outer, true));  // east band
+  }
   state.viewer.scene.primitives.add(collection);
   state.prims.landscape = collection;
 }
