@@ -36,3 +36,6 @@ server/*.db-wal
 !spike/shots/phase1-*.png
 !spike/shots/phase2-*.png
 !spike/shots/phase2-*.png
+
+# graphify knowledge graph (dev tooling, regenerated on demand)
+graphify-out/

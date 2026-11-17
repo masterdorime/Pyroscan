@@ -1,0 +1,66 @@
+# graphify scope for PyroScan
+#
+# The graph is a development aid for "what touches this symbol?" questions.
+# It is not part of the runtime. Keep it narrow: vendored code and large binary
+# assets drown the real signal (server/ is only ~4.3k lines).
+
+# Vendored frontend: Cesium build + node_modules (336 of 461 files at repo root)
+spike/web/node_modules/
+spike/web/cesium/
+spike/web/cesium-unminified/
+
+# Large binary assets: imagery, screenshots, ODM outputs, reference video
+spike/data/
+spike/ref/
+spike/shots/
+spike/missions/
+spike/inbox/
+
+# Design references and generated charts: not code, not contracts.
+# Indexing them costs semantic extraction and adds no call-graph signal.
+Docs/references/
+Docs/rab_assets/
+Docs/_proposal_*.png
+simulation/shots/
+
+# Spike tooling is throwaway by design (see spike/README.md verdict)
+spike/tools/
+
+# Data/fixture JSON is not code; AST extraction on it yields noise.
+benchmarks/results/
+spike/web/data/
+server/providers/data/
+server/providers/fixtures/
+simulation/shots/
+
+# Remaining images: dashboard screenshots only, no semantic value here
+spike/web/*.png
+Docs/*.png
+
+# Generated HTML (payload studio build output) — not source
+simulation/pyroscan_payload_studio.html
+simulation/src/studio.html
+
+# My own generated proposal drafts: derived from the docs above, would
+# duplicate their entities in the graph. Ignoring the .docx SOURCES also
+# stops graphify converting them into graphify-out/converted/*.md at scan time.
+Docs/proposal_sections_id.md
+Docs/Proposal_PyroScan.docx
+Docs/RAB_Payload_PyroScan.docx
+converted/
+
+# Generated / local state
+graphify-out/
+.playwright-mcp/
+server/cache/
+**/__pycache__/
+*.py[cod]
+*.db
+*.db-shm
+*.db-wal
+server/*.db
+.venv/
+venv/
+*.log
+~$*
+*.tmp
