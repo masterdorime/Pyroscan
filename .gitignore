@@ -39,3 +39,4 @@ server/*.db-wal
 
 # graphify knowledge graph (dev tooling, regenerated on demand)
 graphify-out/
+!spike/shots/phase4-*.png

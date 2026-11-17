@@ -33,7 +33,105 @@ const fmtWindow = (start, end) => {
 };
 
 const CONTEXT_CAMERA = { heading: 45, pitch: -22, range: 300 };
-const RECON_CAMERA = { heading: 45, pitch: -30, range: 220 };
+
+/* ---- view modes: Drone / Terrain / Regional ---- */
+const MODES = {
+  drone: { scene: 'reconstruction', camera: { heading: 45, pitch: -30, range: 220 } },
+  terrain: { scene: 'context', camera: { heading: 45, pitch: -25, range: 600 } },
+  regional: { scene: 'context', camera: { heading: 45, pitch: -45, range: 3000 } },
+};
+const MODE_ORDER = ['drone', 'terrain', 'regional'];
+
+function hasPatch() {
+  const m = state.f && state.f.mission;
+  return Boolean(m && m.gsd_cm && m.aligned);
+}
+
+function hasTerrain() {
+  const a = state.f && state.f.assets;
+  return Boolean(a && a.context_dem);
+}
+
+function modeAvailability() {
+  const den = hasTerrain();
+  return {
+    drone: hasPatch(),
+    terrain: den,
+    regional: den,
+  };
+}
+
+function fmtAge(seconds) {
+  if (seconds == null) return '—';
+  const mins = Math.round(seconds / 60);
+  if (mins < 90) return `${mins} min`;
+  const hours = Math.round(mins / 60);
+  if (hours < 48) return `${hours} h`;
+  return `${Math.round(hours / 24)} d`;
+}
+
+function modeBadge(mode) {
+  const items = (state.f && state.f.providers && state.f.providers.items) || {};
+  const mins = (it) => fmtAge(it && it.age_s);
+  if (mode === 'drone') {
+    const gsd = state.f && state.f.mission && state.f.mission.gsd_cm;
+    return `${gsd} cm · patch`;
+  }
+  if (mode === 'regional') {
+    const ring = state.f && state.f.providers && state.f.providers.ring_km;
+    return `${Math.round(ring || 15)} km ring · ${mins(items.weather)}`;
+  }
+  const dem = items.context_dem;
+  const cell = dem && dem.detail ? `30 m · ${dem.detail}` : '30 m';
+  return `${cell} · ${mins(dem)}`;
+}
+
+function readModeFromHash() {
+  const m = (location.hash.match(/^#\/[^/]+\/(\w+)/) || [])[1];
+  return MODE_ORDER.includes(m) ? m : null;
+}
+
+function writeModeHash(mode) {
+  const id = state.f && state.f.mission && state.f.mission.id;
+  if (!id) return;
+  const next = `#/${id}/${mode}`;
+  if (location.hash !== next) history.replaceState(null, '', next);
+}
+
+function syncTabs() {
+  const mode = state.viewMode || 'terrain';
+  const avail = modeAvailability();
+  $$('#modes button').forEach((b) => {
+    const m = b.dataset.mode;
+    b.classList.toggle('active', m === mode);
+    b.disabled = !avail[m];
+    b.title = avail[m] ? '' : (m === 'drone' ? 'no reconstruction yet' : 'no context terrain');
+  });
+  const badge = $('#mode-badge');
+  if (badge) badge.textContent = modeBadge(mode);
+}
+
+function setViewMode(mode, { animate = true } = {}) {
+  const cfg = MODES[mode];
+  if (!cfg) return;
+  state.viewMode = mode;
+  setMode(cfg.scene);
+  const to = { ...cfg.camera };
+  if (animate) flyCamera(to); else { state.camera = to; applyCamera(); }
+  syncTabs();
+  writeModeHash(mode);
+}
+
+function initModes() {
+  const avail = modeAvailability();
+  let mode = readModeFromHash();
+  if (!mode || !avail[mode]) mode = avail.drone ? 'drone' : 'terrain';
+  $$('#modes button').forEach((b) => b.addEventListener('click', () => {
+    if (b.disabled) return;
+    setViewMode(b.dataset.mode);
+  }));
+  setViewMode(mode, { animate: false });
+}const RECON_CAMERA = { heading: 45, pitch: -30, range: 220 };
 const RECON_ENTER_RANGE = 220;
 const RECON_EXIT_RANGE = 380;
 
@@ -99,6 +197,7 @@ function fail(e) {
   populateRail();
   renderProviders();
   renderFiresInset();
+  initModes();
   wireUI();
   wireTheme();
   renderCharts();
@@ -501,6 +600,7 @@ function setMode(mode) {
   applySceneTheme();
   renderLegend();
   renderFiresInset();
+  syncTabs();
 }
 
 /* ---------------- context imagery (Sentinel-2) ---------------- */

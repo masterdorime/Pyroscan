@@ -519,3 +519,14 @@ button { cursor: pointer; }
 .w-note { margin-top: 8px; line-height: 1.4; }
 .w-note.warn { color: var(--amber); }
 .w-note.muted { color: var(--muted); }
+
+/* ---- mode tabs ---- */
+#modes { display: flex; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: 5px; background: var(--elevated); }
+#modes button { border: 0; background: transparent; color: var(--muted); font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; padding: 4px 9px; border-radius: 3px; cursor: pointer; }
+#modes button:hover { color: var(--text); }
+#modes button.active { background: var(--text); color: var(--charcoal); }
+#modes button[disabled] { opacity: .35; cursor: not-allowed; }
+.mode-badge { font: 9px var(--mono); color: var(--muted); letter-spacing: .04em; white-space: nowrap; }
+
+/* legacy affordances retired in favour of the mode tabs */
+#open-recon, #back-context, .mode-pill { display: none !important; }
