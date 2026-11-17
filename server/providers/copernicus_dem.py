@@ -92,20 +92,29 @@ def crop_dem(source, extent: Extent, size: int = 256) -> dict:
     """Crop the source (local path or remote COG URL) to the ring."""
     from rasterio.windows import from_bounds
 
-    with rasterio.open(source) as ds:
-        bounds = ds.bounds
-        west = max(extent.west, bounds.left)
-        south = max(extent.south, bounds.bottom)
-        east = min(extent.east, bounds.right)
-        north = min(extent.north, bounds.top)
-        clipped = (west > extent.west or south > extent.south
-                   or east < extent.east or north < extent.north)
-        if west >= east or south >= north:
-            raise ProviderError("parse", "ring lies outside the DEM tile")
-        window = from_bounds(west, south, east, north, transform=ds.transform)
-        window = window.round_offsets().round_lengths()
-        array = ds.read(1, window=window, boundless=False)
-        nodata = ds.nodata
+    # Remote opens have no Python-level timeout; without these a stalled
+    # request hangs the refresh forever. Same guard as the imagery path.
+    with rasterio.Env(GDAL_HTTP_TIMEOUT="30", GDAL_HTTP_CONNECTTIMEOUT="10",
+                      GDAL_DISABLE_READDIR_ON_OPEN="EMPTY_DIR"):
+        try:
+            with rasterio.open(source) as ds:
+                bounds = ds.bounds
+                west = max(extent.west, bounds.left)
+                south = max(extent.south, bounds.bottom)
+                east = min(extent.east, bounds.right)
+                north = min(extent.north, bounds.top)
+                clipped = (west > extent.west or south > extent.south
+                           or east < extent.east or north < extent.north)
+                if west >= east or south >= north:
+                    raise ProviderError("parse", "ring lies outside the DEM tile")
+                window = from_bounds(west, south, east, north, transform=ds.transform)
+                window = window.round_offsets().round_lengths()
+                array = ds.read(1, window=window, boundless=False)
+                nodata = ds.nodata
+        except ProviderError:
+            raise
+        except Exception as exc:
+            raise ProviderError("network", f"DEM read failed: {type(exc).__name__}") from None
 
     data = array.astype("float64")
     if nodata is not None:
