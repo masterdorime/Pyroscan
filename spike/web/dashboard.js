@@ -36,9 +36,12 @@ const CONTEXT_CAMERA = { heading: 45, pitch: -22, range: 300 };
 
 /* ---- view modes: Drone / Terrain / Regional ---- */
 const MODES = {
-  drone: { scene: 'reconstruction', camera: { heading: 45, pitch: -30, range: 220 } },
-  terrain: { scene: 'context', camera: { heading: 45, pitch: -25, range: 600 } },
-  regional: { scene: 'context', camera: { heading: 45, pitch: -45, range: 3000 } },
+  drone: { scene: 'reconstruction', camera: { heading: 45, pitch: -30, range: 220 },
+           limits: { min: 150, max: 400 } },
+  terrain: { scene: 'context', camera: { heading: 45, pitch: -25, range: 600 },
+             limits: { min: 400, max: 5000 } },
+  regional: { scene: 'context', camera: { heading: 45, pitch: -45, range: 3000 },
+              limits: { min: 2000, max: 40000 } },
 };
 const MODE_ORDER = ['drone', 'terrain', 'regional'];
 
@@ -115,6 +118,7 @@ function setViewMode(mode, { animate = true } = {}) {
   const cfg = MODES[mode];
   if (!cfg) return;
   state.viewMode = mode;
+  state.rangeLimits = { ...cfg.limits };
   setMode(cfg.scene);
   const to = { ...cfg.camera };
   if (animate) flyCamera(to); else { state.camera = to; applyCamera(); }
@@ -145,6 +149,7 @@ const state = {
   prims: {}, bases: {}, mats: {}, groups: {}, pred: [], predLabels: [],
   windEntities: [], center: null, W: 0, H: 0, heights: null, elevProfile: null,
   flight: null, hotspotPins: [], footprintEntities: [], flyRaf: 0,
+  viewMode: 'terrain', rangeLimits: { min: 400, max: 5000 },
 };
 
 const AMBER = C.Color.fromCssColorString('#e5a954');
@@ -545,9 +550,8 @@ function closeReconstruction() {
 }
 
 function checkZoomMode() {
-  if (state.is2D) return;
-  if (state.mode === 'context' && state.camera.range <= RECON_ENTER_RANGE) openReconstruction();
-  else if (state.mode === 'reconstruction' && state.camera.range >= RECON_EXIT_RANGE) closeReconstruction();
+  // Zoom no longer switches mode: the tab is the only authority (modes spec 3).
+  return;
 }
 
 function wireCamera() {
@@ -573,7 +577,7 @@ function wireCamera() {
   el.addEventListener('wheel', (e) => {
     e.preventDefault();
     if (state.flyRaf) { cancelAnimationFrame(state.flyRaf); state.flyRaf = 0; }
-    state.camera.range = clamp(state.camera.range * Math.exp(e.deltaY * 0.0011), 150, 1000);
+    state.camera.range = clamp(state.camera.range * Math.exp(e.deltaY * 0.0011), state.rangeLimits.min, state.rangeLimits.max);
     applyCamera();
     checkZoomMode();
   }, { passive: false });
@@ -1206,8 +1210,8 @@ function wireUI() {
 
   $('#forecast').addEventListener('input', (e) => applyForecast(+e.target.value));
   $('#play').addEventListener('click', togglePlay);
-  $('#zoom-in').addEventListener('click', () => { state.camera.range = clamp(state.camera.range * 0.8, 150, 1000); applyCamera(); checkZoomMode(); });
-  $('#zoom-out').addEventListener('click', () => { state.camera.range = clamp(state.camera.range * 1.25, 150, 1000); applyCamera(); checkZoomMode(); });
+  $('#zoom-in').addEventListener('click', () => { state.camera.range = clamp(state.camera.range * 0.8, state.rangeLimits.min, state.rangeLimits.max); applyCamera(); checkZoomMode(); });
+  $('#zoom-out').addEventListener('click', () => { state.camera.range = clamp(state.camera.range * 1.25, state.rangeLimits.min, state.rangeLimits.max); applyCamera(); checkZoomMode(); });
   $('#reset').addEventListener('click', () => {
     state.camera = { ...(state.mode === 'context' ? CONTEXT_CAMERA : RECON_CAMERA) };
     state.is2D = false;
