@@ -88,14 +88,15 @@ Docs/                   design spec, handoff, reference gallery
 
 This is a working vertical slice, not a production deployment. Known gaps:
 
-- **Provider layer (Phase 1–2, shipped):** weather and wind come from BMKG
-  (Indonesia) with Open-Meteo as the global fallback, regional active-fire
-  detections from NASA FIRMS NRT, and **30 m context terrain** from Copernicus
-  DEM. Every reading shows its source and age in the **Live data** card. The
-  Context view now has real relief; the ground is still context, not
-  reconstruction. Phase 3–5 (Sentinel-2 imagery, OSM/Photon place names,
-  hardening) are planned. See
-  `Docs/specs/2026-11-16-free-provider-layer-design.md`.
+- **Provider layer (shipped):** weather and wind from BMKG (Indonesia) with
+  Open-Meteo as the global fallback, regional fire detections from NASA FIRMS NRT,
+  30 m context terrain from Copernicus DEM, and Sentinel-2 imagery cached as WebP.
+  Every reading shows its source and age in the **Live data** card.
+- **View modes:** `Drone` (1.6 cm photogrammetry patch), `Terrain` (30 m DEM, works
+  with no drone data) and `Regional` (15 km ring), each with its own camera,
+  clamp, and resolution badge. Deep links: `#/<mission>/<mode>`.
+- **Known blockers:** the Sentinel-2 image is fetched and cached but not yet drawn,
+  and Regional has no ring terrain yet. See `Docs/HANDOFF.md` §9.
 - YOLO fire/smoke detections are not wired; hotspot positions are fixtures.
 - The watcher/NodeODM path has not been exercised on a new flight.
 - Heat, wind, prediction geometry, severity, weather, and advisory are fixtures.

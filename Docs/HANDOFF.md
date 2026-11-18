@@ -1,29 +1,38 @@
 # PyroScan — Handoff
 
-**Date:** 2026-11-16
+**Date:** 2026-11-18
 **Repo:** https://github.com/masterdorime/Pyroscan (public, `main`). Raw drone data and the reference video are not committed; the demo DB, mission assets, Cesium bundle, and screenshots are.
-**Status: Phase 2 shipped** — provider gateway + BMKG/Open-Meteo weather +
-NASA FIRMS regional detections + Copernicus 30 m context terrain, all with
-per-provider source/age. Phases 3–5 (Sentinel-2, OSM/Photon, hardening) are
-planned, not built. Specs and plans: `Docs/specs/2026-11-16-free-provider-layer-design.md`,
-`Docs/plans/2026-11-16-free-provider-layer-phase-1.md`,
-`Docs/plans/2026-11-16-free-provider-layer-phase-2.md`.
+**Status: provider layer Phase 1–2 shipped; Phase 3 data layer shipped, render blocked; view modes Phase 1 shipped.** Weather (BMKG → Open-Meteo), NASA FIRMS detections, Copernicus 30 m terrain and Sentinel-2 imagery are fetched, cached and surfaced with source/age. The dashboard now has **Drone / Terrain / Regional** mode tabs. Two data-to-pixels gaps remain and block the promise: **the Sentinel-2 image never reaches the scene**, and **Regional has no ring terrain to look at**.
 
-**Phase 2 measured facts.** Copying a 1° cell is not necessary: a 25 km window
-read from the Copernicus COG transferred **0.85 MB**, so the remote raster can be
-read directly and cropped in memory. The shipped adapter predates that
-correction and still downloads the full 34–42 MB tile to a temp file; it is
-correct but ~34× more transfer than needed. Cached cost is ~700 KB per mission.
-A ring crossing a 1° cell boundary is clipped and flagged (`clipped: true`), not
-mosaicked. Context renders relief over the 1.35 km mosaic footprint only,
-anchored so the DEM at the mission centre meets the old plane — the shape is
-real, the absolute datum is tied to the mission.
+Specs and plans:
+`Docs/specs/2026-11-16-free-provider-layer-design.md`,
+`Docs/specs/2026-11-17-mission-modes-and-spread-visualization.md`,
+`Docs/plans/2026-11-16-free-provider-layer-phase-1.md`,
+`Docs/plans/2026-11-16-free-provider-layer-phase-2.md`,
+`Docs/plans/2026-11-17-free-provider-layer-phase-3.md`.
+
+**Test state.** `python -m server.providers.selftest` → **77/77**, no network.
+`python -m server.selftest` → PASS. `--live` reaches all three providers when
+the FIRMS key is present. `MAP_KEY` lives in `.env` (gitignored, never committed).
+
+**Measured facts worth keeping.**
+- Copernicus DEM: a 25 km window transfers **0.85 MB**, so reads are windowed;
+  cached heightmap is ~712 KB per mission. A ring crossing a 1° cell is clipped
+  and flagged, not mosaicked.
+- Sentinel-2: 1.2 km window **1.46 MB**, 25 km window **15.95 MB**; cached WebP
+  is 40–115 KB.
+- FIRMS: `VIIRS_SNPP_NRT` returned **zero rows everywhere** on 2026-11-16 while
+  `MODIS_NRT` returned 36 for the same area, so the adapter tries VIIRS → MODIS
+  and stops at the first non-empty response. A single hardcoded sensor would have
+  reported "no fires" indefinitely.
+- Brighton has **no fires**, correctly. Zero detections must read as coverage,
+  not as an empty box.
 
 **Measurement lesson (recorded because it cost two wrong conclusions).** GDAL
 curl-verbose logs report the full object size as `Content-Length` on **HEAD**
 responses. Summing that overstates a windowed read by the whole file. Count
-`Content-Range` spans on `206` bodies instead. The spec's §7.5 has the corrected
-table.
+`Content-Range` spans on `206` bodies instead. The provider spec's §7.5 has the
+corrected table.
 
 **Architecture (Phase 1).** `server/providers/` holds one adapter per source and
 one `Gateway` that owns a per-mission file cache, read-time status derivation,
@@ -335,7 +344,15 @@ distinct, and do not imply reconstruction beyond the measured patch.
 
 ---
 
-## 8. Free provider layer — planning (not implemented)
+## 8. Free provider layer — status
+
+**Shipped:** Phase 1 (gateway, cache, weather, FIRMS, source/age) and Phase 2
+(Copernicus DEM, windowed reads, `/context/dem`, Context relief). Phase 3's data
+layer ships (STAC search, windowed `TCI.tif` read, graded WebP, `/context/imagery.webp`)
+but **the image is not drawn** — see §9.
+
+The design text below is retained as the record of *why* the layer is shaped this
+way. Read it for the rationale, not as a to-do list.
 
 The next planned subsystem is a free/keyless provider layer. No provider code
 or approved spec exists yet.
@@ -444,8 +461,30 @@ COG-reader gate, §7.5). Keep this file in sync and push after each phase.
     limited by drone GPS and basemap registration.
 17. **`mesh.glb` is not committed.** The API `/mesh.glb` endpoint can 404; the
     dashboard builds its mesh from `heightmap.json` and does not use it.
-18. **Provider servers were stopped by a restart.** Start uvicorn/static server
-    with the commands in §2 before testing.
+18. **Servers stop on restart.** Start uvicorn with the commands in §2 before
+    testing; `api/v1/health` returning 200 is the check.
+19. **Sentinel-2 never reaches the scene (blocker).** The provider fetches, caches
+    a graded WebP and serves it, but the render is disabled: a neighbouring UTM
+    tile is selected for the 4 km window (`ring lies outside the imagery tile`),
+    and the tile that previously worked returned a rasterio IO error. The adapter
+    now tries three candidates; the geometry still disagrees. Diagnose with a
+    standalone probe that prints `ds.crs`, `ds.bounds` and the transformed window
+    for one known-good scene before touching the adapter again.
+20. **Regional has no ring terrain (blocker).** A 128×128 tinted mesh over the DEM
+    bbox was built, added to the scene and never appeared; no console error. It
+    was reverted rather than left as dead code. Cause unestablished — candidates
+    are the `Color` material with `flat: true`, bounding-sphere culling at 30 km
+    scale, and depth ordering against the mosaic quad.
+21. **Modes are Phase 1 only.** Tabs, presets, per-mode clamps, badges and hash
+    deep links work. Not built: ring terrain (20), per-source surfaces, the
+    per-bearing spread model, and the growing front.
+22. **DEM chain not started.** 30 m is coarse for fire behaviour (a 10 m firebreak
+    is invisible). Intended chain: DEMNAS ~8 m (Indonesia) → USGS 3DEP 10 m/1 m
+    (USA demo) → Copernicus 30 m. Licences and access are **unverified**; do not
+    write them into a spec as fact until checked.
+23. **A persistently failing refresh looks healthy.** TTL (3 d for imagery) keeps
+    an 8-hour-old cache `fresh` and green even when every refresh is failing.
+    `fail_count` and `last_error` carry the truth but the card does not show it.
 
 ---
 
@@ -472,24 +511,27 @@ COG-reader gate, §7.5). Keep this file in sync and push after each phase.
   `ref-pyroscan-theme-menu.png`, `ref-pyroscan-studio.png`,
   `ref-pyroscan-topo.png`.
 - Next-agent prompt: `Docs/NEXT_AGENT_PROMPT.md`.
-- Provider spec (planned): `Docs/specs/2026-11-16-free-provider-layer-design.md`.
+- Provider spec: `Docs/specs/2026-11-16-free-provider-layer-design.md`.
+- Modes + spread spec: `Docs/specs/2026-11-17-mission-modes-and-spread-visualization.md`.
+- Mode screenshots: `spike/shots/phase4-modes.png` (Drone),
+  `phase4-terrain-mode.png` (Terrain via deep link),
+  `phase4-regional.png` (Regional showing only the mosaic — the evidence for §9.20).
 
 ---
 
 ## 12. Start here
 
-1. Read `Docs/HANDOFF.md`, `Docs/NEXT_AGENT_PROMPT.md`, and
+1. Read `Docs/HANDOFF.md` (this file), `Docs/NEXT_AGENT_PROMPT.md`, and
    `Docs/dashboard_design.md`.
-2. Start the API and/or static server with the commands in §2; the previous
-   background servers were stopped by a restart.
-3. The UI pivot and view revision are complete; review
-   `spike/shots/context-paper.png`, `recon-paper.png`, `context-obsidian.png`,
-   `recon-obsidian.png`, and `theme-menu-context.png`.
-4. **Current task:** execute
-   `Docs/plans/2026-11-16-free-provider-layer-phase-1.md` (the spec at
-   `Docs/specs/2026-11-16-free-provider-layer-design.md` is approved). Phase 1 =
-   provider framework + BMKG/Open-Meteo + FIRMS + source/age.
-5. After Phase 1: Phase 2 DEM, Phase 3 Sentinel-2, Phase 4 OSM/Photon, Phase 5
-   hardening — each gets its own plan from the same spec.
-6. Other lanes after/parallel: YOLO detections, watcher/NodeODM real mission,
-   SSE progress, React/Vite port. Keep docs and screenshots in sync.
+2. Start the API with §2's commands. `curl` `/api/v1/missions/latest` and confirm
+   `providers.items` lists four keys.
+3. **Two blockers come first**, in this order — they are the difference between
+   "data integrated" and "data visible":
+   a. §9.19 Sentinel-2 render (probe the tile geometry before editing the adapter).
+   b. §9.20 ring terrain (instrument the primitive; do not guess again).
+4. Then the modes spec (`Docs/specs/2026-11-17-mission-modes-and-spread-visualization.md`):
+   Phase 3 per-bearing model, Phase 4 growing front, Phase 5 per-source surfaces.
+5. Then the DEM chain (§9.22) once licences are checked, and OSM/Photon (provider
+   spec Phase 4).
+6. Other lanes: YOLO detections, watcher/NodeODM real mission, SSE progress,
+   React/Vite port. Keep this file, `README.md` and screenshots in sync.
