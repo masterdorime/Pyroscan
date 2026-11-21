@@ -2,9 +2,6 @@
   "name": "pyroscan-spike",
   "private": true,
   "type": "module",
-  "dependencies": {
-    "cesium": "latest"
-  },
   "devDependencies": {
     "playwright-core": "^1.65.1"
   }
