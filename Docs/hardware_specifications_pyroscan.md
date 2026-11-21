@@ -1,15 +1,15 @@
 # Hardware Specification — PyroScan Extension Payload
 
 **Version:** 1.2.0
-**Related:** `product_requirement_document_pyroscan_prd.1.md` v1.3.0
+**Related:** `product_requirement_document_pyroscan_prd.1.md` v1.3.1
 
-> **Changelog 1.2.0** — Tambah §5 frekuensi & regulasi, §6 weight budget, §7 termal & daya, §8 verification checklist. Camera2 level ditandai wajib verifikasi. LoRa dipindah ke Phase 2.
+> **Changelog 1.2.0** — Added §5 frequency & regulation, §6 weight budget, §7 thermal & power, §8 verification checklist. Camera2 level flagged as requiring verification. LoRa moved to Phase 2.
 
 ---
 
 ## 1. Overview & Mechanical Design
 
-Modul *extension payload* PyroScan dirancang untuk dipasang di bawah perut drone (*belly mount*) dengan posisi **Top-Down (Nadir)**, yaitu layar smartphone mendatar sejajar tanah dan kamera utama menghadap tegak lurus $90^\circ$ ke permukaan bumi.
+The PyroScan *extension payload* is designed to mount under the drone's belly (*belly mount*) in a **top-down (nadir)** orientation — the phone lies flat, parallel to the ground, with the main camera pointing straight down at $90^\circ$ to the surface.
 
 ```
 +-------------------------------------------------------------+
@@ -21,14 +21,14 @@ Modul *extension payload* PyroScan dirancang untuk dipasang di bawah perut drone
 |            PAYLOAD TRAY FRAME (3D PRINT PETG)               |
 |                                                             |
 |  [ ESP32 LoRa* ] <--(USB OTG)--> [ REALME 3 PRO (FLAT) ]    |
-|  * Phase 2 only                   kamera menghadap kebawah  |
+|  * Phase 2 only                   camera facing down         |
 |                                       || (Sony IMX519)      |
 +---------------------------------------||--------------------+
                                         \/
                                  (Top-Down Aerial Photo)
 ```
 
-**Phase 1** tidak menyertakan ESP32/LoRa. Tray dicetak dengan *pocket* kosong untuk modul radio agar tidak perlu mencetak ulang saat Phase 2.
+**Phase 1** does not include the ESP32/LoRa. The tray is printed with an empty *pocket* for the radio module so it does not have to be reprinted when Phase 2 arrives.
 
 ---
 
@@ -36,44 +36,44 @@ Modul *extension payload* PyroScan dirancang untuk dipasang di bawah perut drone
 
 ### 2.1. Primary Processing Unit (Smartphone)
 * **Model:** Realme 3 Pro (RMX1851).
-* **Processor:** Qualcomm Snapdragon 710 (10nm Octa-Core).
-* **GPU / AI Accelerator:** Adreno 616 GPU + Hexagon 685 DSP (NNAPI supported).
-* **Camera System:** 16 MP Sony IMX519 Sensor ($f/1.7$, $1/2.6"$ sensor size).
+* **Processor:** Qualcomm Snapdragon 710 (10nm octa-core).
+* **GPU / AI accelerator:** Adreno 616 GPU + Hexagon 685 DSP (NNAPI supported).
+* **Camera system:** 16 MP Sony IMX519 sensor ($f/1.7$, $1/2.6"$ sensor size).
 * **Positioning:** Multi-GNSS (GPS, GLONASS, GALILEO, BeiDou).
-* **Weight Reduction:** Backcover plastik dilepas, baterai asli dipertahankan. Total bobot net: **~155 gram**.
+* **Weight reduction:** plastic back cover removed, original battery retained. Net weight: **~155 g**.
 
-> **⚠️ Camera2 Level — wajib diverifikasi sebelum desain final.**
-> Cek `CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL`. Realme 3 Pro pada Android 9/10 kemungkinan hanya `LEGACY` atau `LIMITED`, bukan `FULL`. Konsekuensi bila `LIMITED`:
-> * Kontrol `SENSOR_EXPOSURE_TIME` manual mungkin tidak tersedia → auto-exposure akan menurunkan shutter di bawah 1/1000 s saat mendung, menghasilkan motion blur.
-> * `CONTROL_AE_TARGET_FPS_RANGE` mungkin terbatas.
-> * Buffer burst mungkin < 3 frame.
+> **⚠️ Camera2 level — must be verified before the design is final.**
+> Check `CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL`. On Android 9/10 the Realme 3 Pro is likely `LEGACY` or `LIMITED`, not `FULL`. Consequences if `LIMITED`:
+> * Manual `SENSOR_EXPOSURE_TIME` control may be unavailable → auto-exposure will drop the shutter below 1/1000 s on an overcast day, producing motion blur.
+> * `CONTROL_AE_TARGET_FPS_RANGE` may be constrained.
+> * Burst buffering may be under 3 frames.
 >
-> Jika level terbukti `LEGACY`, mitigasi: gunakan mode video 1080p60 sebagai sumber frame (bukan still capture), atau buka kompensasi exposure (`CONTROL_AE_EXPOSURE_COMPENSATION` / `SENSOR_SENSITIVITY`) sebagai gantinya.
+> If the level turns out to be `LEGACY`, mitigate by using 1080p60 video as the frame source (instead of still capture), or expose `CONTROL_AE_EXPOSURE_COMPENSATION` / `SENSOR_SENSITIVITY` as a substitute.
 
 ### 2.2. Radio Transceiver Unit (Phase 2 only)
 * **Microcontroller:** ESP32-WROOM-32.
-* **LoRa Chipset:** Semtech SX1262 (tunable 915 / 923 MHz — lihat §5).
-* **Output Power:** $+22\text{ dBm}$ (Transmit Range up to $3–5\text{ km}$ line-of-sight).
-* **Antenna:** $3\text{ dBi}$ Dipole Rubber Antenna with SMA connector.
-* **Status:** **Tidak dipasang di Phase 1.** Lihat DG-02 di PRD §9.
+* **LoRa chipset:** Semtech SX1262 (tunable 915 / 923 MHz — see §5).
+* **Output power:** $+22\text{ dBm}$ (range up to $3–5\text{ km}$ line-of-sight).
+* **Antenna:** $3\text{ dBi}$ dipole rubber antenna with SMA connector.
+* **Status:** **not fitted in Phase 1.** See DG-02 in PRD §9.
 
 ### 2.3. Mechanical & Mounting
-* **Structure:** 3D Printed Frame Tray menggunakan filament **PETG** (tahan panas outdoor & fleksibel).
-* **Damping System:** 4x Blue Rubber Anti-Vibration Balls (300g load rating).
-* **Camera Window:** Cut-out hole sebesar $30 \times 20\text{ mm}$ persis di bawah posisi lensa Sony IMX519.
-* **Lens Shroud (disarankan):** baffle PETG hitam 5 mm di sekeliling jendela kamera untuk memblokir flare matahari langsung. Tanpa ini, foto nadir siang hari akan berkontras rendah dan memperburuk feature matching.
+* **Structure:** 3D-printed frame tray in **PETG** (outdoor heat resistant and slightly flexible).
+* **Damping system:** 4× blue rubber anti-vibration balls (300 g load rating).
+* **Camera window:** cut-out of $30 \times 20\text{ mm}$ directly under the Sony IMX519 lens.
+* **Lens shroud (recommended):** a 5 mm black PETG baffle around the camera window to block direct sun flare. Without it, midday nadir photos come out low-contrast, which makes feature matching worse.
 
 ---
 
 ## 3. Electrical & Wiring Diagram
 
-### 3.1. Phase 1 (tanpa LoRa)
+### 3.1. Phase 1 (no LoRa)
 ```
 [ Realme 3 Pro ] --(internal)--> capture + log + Wi-Fi sync
 ```
-Tidak ada wiring eksternal. Kabel = nol titik gagal tambahan.
+No external wiring. Zero additional mechanical failure points.
 
-### 3.2. Phase 2 (dengan LoRa)
+### 3.2. Phase 2 (with LoRa)
 ```text
 [ Realme 3 Pro ] --(USB-C OTG Cable)--> [ ESP32 Microcontroller ]
   - VBUS (+5V)   --------------------->   - VIN / 5V Pin
@@ -90,127 +90,127 @@ Tidak ada wiring eksternal. Kabel = nol titik gagal tambahan.
   - GPIO 26 (DIO1)-------------------->   - DIO1
 ```
 
-**Catatan OTG:**
-* Saat USB-C host mode aktif, HP **tidak dapat mengisi daya**. Batas waktu misi = kapasitas baterai HP (~4000 mAh) dikurangi konsumsi capture + inferensi. Estimasi aman: **35–45 menit** penerbangan per baterai.
-* Kabel OTG adalah titik gagal mekanis paling rapuh pada payload. Gunakan kabel dengan *strain relief* dan kunci dengan *hot glue* atau *cable tie* ke tray — bukan menggantung bebas.
+**OTG notes:**
+* While USB-C host mode is active, the phone **cannot charge**. Mission duration is therefore the phone's battery capacity (~4000 mAh) minus capture and inference draw. Safe estimate: **35–45 minutes** of flight per battery.
+* The OTG cable is the most fragile mechanical point on the payload. Use a cable with strain relief and secure it to the tray with hot glue or a cable tie — do not let it hang free.
 
 ---
 
 ## 4. Ground Station Hardware Setup
 
-* **Laptop Workstation:** Lenovo LOQ Series (Intel Core i7 HX-series, NVIDIA RTX 4060 8GB GDDR6, 16/32GB RAM).
-* **Receiver Unit:** ESP32 + SX1262 LoRa Receiver via USB Serial ke laptop posko. *(Phase 2)*
-* **Local Access Point:** Router Wi-Fi 6 Portable ($5\text{ GHz}$) di posko darat untuk *bulk auto-sync* foto saat drone mendarat. **Wajib ada di Phase 1** — ini satu-satunya jalur transfer data.
-* **Storage:** SSD NVMe ≥ 512 GB. Satu misi 30 menit @2 s interval @12MP ≈ 900 foto ≈ 3–4 GB. Sisakan ≥ 100 GB bebas untuk dataset ODM.
+* **Laptop workstation:** Lenovo LOQ series (Intel Core i7 HX-series, NVIDIA RTX 4060 8 GB GDDR6, 16/32 GB RAM).
+* **Receiver unit:** ESP32 + SX1262 LoRa receiver over USB serial to the command-post laptop. *(Phase 2)*
+* **Local access point:** portable Wi-Fi 6 router ($5\text{ GHz}$) at the command post for *bulk auto-sync* when the drone lands. **Required in Phase 1** — it is the only data transfer path.
+* **Storage:** NVMe SSD ≥ 512 GB. One 30-minute mission at a 2 s interval and 12 MP ≈ 900 photos ≈ 3–4 GB. Keep ≥ 100 GB free for ODM scratch data.
 
 ---
 
-## 5. Frekuensi & Regulasi
+## 5. Frequency & Regulation
 
-Ini **bukan** keputusan teknis, dan tidak boleh ditetapkan di dokumen tanpa verifikasi.
+This is **not** a technical decision and must not be settled in a document without verification.
 
-| Parameter | Nilai | Status |
+| Parameter | Value | Status |
 |---|---|---|
-| Frekuensi di PRD v1.1.0 | 915 MHz | ❌ Kemungkinan **bukan** alokasi ISM Indonesia |
-| Alokasi ISM Indonesia (indikatif) | 920–923 MHz | ⚠️ **Harus diverifikasi** ke SDPPI/Komdigi |
-| SX1262 | Tunable 150–960 MHz | ✅ Mendukung keduanya |
-| Daya pancar | +22 dBm | ⚠️ Batas EIRP per band perlu dicek |
+| Frequency in PRD v1.1.0 | 915 MHz | ❌ likely **not** the Indonesian ISM allocation |
+| Indonesian ISM allocation (indicative) | 920–923 MHz | ⚠️ **must be verified** with SDPPI/Komdigi |
+| SX1262 | tunable 150–960 MHz | ✅ supports both |
+| Output power | +22 dBm | ⚠️ the EIRP limit per band must be checked |
 
-**Status: DG-02, terbuka.** Jangan cetak enclosure final dan jangan pesan antena sebelum:
-1. Alokasi frekuensi ISM Indonesia yang berlaku dikonfirmasi.
-2. Batas daya pancar untuk band tersebut diketahui.
-3. Kebutuhan perizinan (jika ada) dipahami.
+**Status: DG-02, open.** Do not print the final enclosure or order the antenna before:
+1. The applicable Indonesian ISM frequency allocation is confirmed.
+2. The transmit-power limit for that band is known.
+3. Any licensing requirement is understood.
 
-Karena LoRa sudah dipindah ke Phase 2, gate ini **tidak menghambat Phase 1**.
+Because LoRa is deferred to Phase 2, this gate **does not block Phase 1**.
 
 ---
 
 ## 6. Weight Budget (Hard Cap: 190 g)
 
-| Komponen | Estimasi | Catatan |
+| Component | Estimate | Note |
 |---|---|---|
-| Realme 3 Pro tanpa backcover, baterai asli | 155 g | Angka dari spec, **verifikasi dengan timbangan** |
-| Tray PETG (infill 30%, 2 perimeter) | 18–24 g | Bervariasi menurut slicer |
-| 4x rubber damper ball + pengikat | 6 g | |
-| Baffle/shroud kamera (PETG) | 2 g | |
-| Sekrup, insert, velcro | 5 g | |
-| **Subtotal Phase 1** | **186–192 g** | **⚠️ Mepet / berpotensi lewat** |
+| Realme 3 Pro without back cover, original battery | 155 g | from spec — **verify on a scale** |
+| PETG tray (30% infill, 2 perimeters) | 18–24 g | slicer dependent |
+| 4× rubber damper balls + ties | 6 g | |
+| Camera baffle/shroud (PETG) | 2 g | |
+| Screws, inserts, velcro | 5 g | |
+| **Phase 1 subtotal** | **186–192 g** | **⚠️ tight / possibly over** |
 | ESP32-WROOM-32 + breakout | 8 g | Phase 2 |
 | SX1262 module | 3 g | Phase 2 |
-| Antena 3 dBi + SMA | 12 g | Phase 2 |
-| Kabel OTG | 6 g | Phase 2 |
-| **Subtotal Phase 2** | **215–221 g** | **❌ Melebihi cap** |
+| 3 dBi antenna + SMA | 12 g | Phase 2 |
+| OTG cable | 6 g | Phase 2 |
+| **Phase 2 subtotal** | **215–221 g** | **❌ exceeds the cap** |
 
-**Kesimpulan:** Phase 1 kemungkinan masih lolos (mepet). **Phase 2 tidak lolos** dengan angka ini. Opsi bila LoRa diaktifkan:
-1. Turunkan infill tray ke 15–20% dan gunakan *sparse* top/bottom.
-2. Ganti baterai HP dengan sel lebih kecil (risiko: runtime turun).
-3. Lepas speaker, getaran motor, dan modul kamera sekunder depan dari HP.
-4. Revisi NFR-PERF-01 dengan justifikasi tertulis.
+**Conclusion:** Phase 1 probably still passes (barely). **Phase 2 does not pass** with these figures. If LoRa is enabled, either:
+1. Drop tray infill to 15–20% and use sparse top/bottom.
+2. Replace the phone battery with a smaller cell (risk: shorter runtime).
+3. Remove the speaker, vibration motor, and front secondary camera module from the phone.
+4. Revise NFR-PERF-01 with written justification.
 
-**Wajib:** timbang setiap komponen dengan timbangan dapur 0.1 g sebelum enclosure final dicetak. Jangan pakai angka spec sebagai kebenaran.
+**Mandatory:** weigh every component on a 0.1 g kitchen scale before printing the final enclosure. Do not treat spec-sheet numbers as truth.
 
 ---
 
-## 7. Termal & Manajemen Daya
+## 7. Thermal & Power Management
 
 ### 7.1. Payload (Realme 3 Pro)
-| Beban | Dampak |
+| Load | Effect |
 |---|---|
-| Capture 12MP @2 s | Sensor + ISP panas, throttle setelah ~8–12 menit |
-| TFLite INT8 kontinu | Adreno/Hexagon panas, throttle lebih cepat |
-| Layar menyala | Konsumsi besar & panas — **matikan layar** atau set brightness 0 |
-| Charging saat terbang | Tidak mungkin (OTG host mode) |
+| 12 MP capture @2 s | Sensor + ISP heat up, throttling after ~8–12 minutes |
+| Continuous TFLite INT8 | Adreno/Hexagon heat up, throttles sooner |
+| Screen on | Large draw and heat — **turn the screen off** or set brightness to 0 |
+| Charging in flight | Impossible (OTG host mode) |
 
-**Aturan operasional:**
-* Default **12MP @2–4 s**, bukan 16MP @1 s.
-* Layar mati, airplane mode ON (kecuali Wi-Fi saat sinkronisasi darat).
-* Jeda 30 detik setiap 5 menit capture bila suhu baterai > 42 °C (baca `BatteryManager.EXTRA_TEMPERATURE`).
-* Catat suhu awal/akhir ke log — ini data validasi untuk SPIKE-03.
+**Operating rules:**
+* Default **12 MP @2–4 s**, not 16 MP @1 s.
+* Screen off, airplane mode on (except Wi-Fi during ground sync).
+* Pause 30 s every 5 minutes of capture if battery temperature > 42 °C (read `BatteryManager.EXTRA_TEMPERATURE`).
+* Log start/end temperature — that is the validation data for SPIKE-03.
 
 ### 7.2. Ground Station (Lenovo LOQ)
-* ODM adalah beban CPU+GPU kontinu 3–10 menit → laptop *thermal throttle*.
-* Set Windows power mode ke **Best Performance** dan pastikan adaptor terpasang.
-* Letakkan laptop di permukaan keras dan berventilasi — bukan di pangkuan atau di dalam tas.
-* Ukur `nvidia-smi` clocks & suhu selama task ODM; simpan sebagai baseline di SPIKE-04.
+* ODM is a continuous CPU+GPU load for 3–10 minutes → the laptop *thermal throttles*.
+* Set Windows power mode to **Best Performance** and keep the adapter connected.
+* Put the laptop on a hard, ventilated surface — not a lap, not inside a bag.
+* Record `nvidia-smi` clocks and temperature during an ODM task; keep it as the SPIKE-04 baseline.
 
 ---
 
 ## 8. Verification Checklist (Pre-Flight)
 
-Dijalankan sebelum penerbangan pertama dan setelah setiap perubahan firmware.
+Run before the first flight and after every firmware change.
 
 ### 8.1. Payload
-- [ ] `INFO_SUPPORTED_HARDWARE_LEVEL` tercatat (LEGACY / LIMITED / FULL)
-- [ ] Exposure manual tersedia? (ya/tidak) → catat nilai shutter & ISO yang dipakai
-- [ ] GNSS fix < 30 s, `num_satellites` ≥ 6, `horizontal_accuracy` tercatat
-- [ ] Foreground service `camera` bertahan 10 menit dengan layar mati
-- [ ] Battery optimization dimatikan untuk aplikasi
-- [ ] Autostart ColorOS diizinkan
-- [ ] 100 foto test tersimpan, EXIF GPS terbaca oleh `exiftool`
-- [ ] Suhu baterai setelah 10 menit capture tercatat
-- [ ] **Bobot total ditimbang** (target < 190 g)
+- [ ] `INFO_SUPPORTED_HARDWARE_LEVEL` recorded (LEGACY / LIMITED / FULL)
+- [ ] Manual exposure available? (yes/no) → record the shutter and ISO used
+- [ ] GNSS fix < 30 s, `num_satellites` ≥ 6, `horizontal_accuracy` recorded
+- [ ] `camera` foreground service survives 10 minutes with the screen off
+- [ ] Battery optimization disabled for the app
+- [ ] ColorOS autostart allowed
+- [ ] 100 test photos stored, EXIF GPS readable by `exiftool`
+- [ ] Battery temperature after 10 minutes of capture recorded
+- [ ] **Total weight weighed** (target < 190 g)
 
 ### 8.2. Delegate Benchmark (SPIKE-03)
-- [ ] NNAPI: FPS ____ , suhu akhir ____
-- [ ] GPU delegate FP16: FPS ____ , suhu akhir ____
-- [ ] XNNPACK CPU INT8: FPS ____ , suhu akhir ____
-- [ ] Delegate terpilih: __________ (alasan: __________)
+- [ ] NNAPI: FPS ____ , final temperature ____
+- [ ] GPU delegate FP16: FPS ____ , final temperature ____
+- [ ] XNNPACK CPU INT8: FPS ____ , final temperature ____
+- [ ] Delegate selected: __________ (reason: __________)
 
 ### 8.3. SfM Viability (SPIKE-01 / DG-01)
-- [ ] 20–30 foto nadir kanopi hidup diambil
+- [ ] 20–30 nadir photos of a living canopy captured
 - [ ] `num_reconstructed / num_images` = ____ %
-- [ ] RMSE reprojection = ____ px
-- [ ] DEM terbentuk? (ya/tidak)
-- [ ] Waktu proses = ____ menit
-- [ ] **DG-01 lulus?** (MODE-A ≥ 60%, MODE-B ≥ 80%)
+- [ ] Reprojection RMSE = ____ px
+- [ ] DEM generated? (yes/no)
+- [ ] Processing time = ____ minutes
+- [ ] **DG-01 passes?** (MODE-A ≥ 60%, MODE-B ≥ 80%)
 
 ### 8.4. Ground Station
-- [ ] NodeODM container jalan, GPU terdeteksi (`--gpu`)
-- [ ] `nvidia-smi` melihat proses ODM
-- [ ] Demo kecil (5 foto) menghasilkan `ortho.tif` + `dem.tif` + `mesh.glb`
-- [ ] Ollama melayani `qwen3.5:4b-q4_K_M` dengan `num_ctx=8192`
-- [ ] VRAM peak tercatat saat ODM saja, LLM saja, dan keduanya berurutan
-- [ ] `OLLAMA_KEEP_ALIVE=0` terbukti membebaskan VRAM setelah generasi
-- [ ] `python benchmarks\bench_llm.py --repeats 3 qwen3.5:4b-q4_K_M` menghasilkan wall < 30 s
+- [ ] NodeODM container running, GPU detected (`--gpu`)
+- [ ] `nvidia-smi` sees the ODM process
+- [ ] Small demo (5 photos) produces `ortho.tif` + `dem.tif` + `mesh.glb`
+- [ ] Ollama serves `qwen3.5:4b-q4_K_M` with `num_ctx=8192`
+- [ ] VRAM peak recorded for ODM alone, LLM alone, and both in sequence
+- [ ] `OLLAMA_KEEP_ALIVE=0` demonstrably frees VRAM after generation
+- [ ] `python benchmarks\bench_llm.py --repeats 3 qwen3.5:4b-q4_K_M` reports wall < 30 s
 
-> Baseline terukur (2026-11-14, RTX 4060 Laptop 8 GB): 67.1 t/s decode, 11.4 s wall, 3.97 GB VRAM, JSON valid 3/3. Lihat `llm_benchmark_pyroscan.md`.
+> Measured baseline (2026-11-14, RTX 4060 Laptop 8 GB): 67.1 t/s decode, 11.4 s wall, 3.97 GB VRAM, valid JSON 3/3. See `llm_benchmark_pyroscan.md`.

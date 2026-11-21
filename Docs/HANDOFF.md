@@ -2,7 +2,7 @@
 
 **Date:** 2026-11-18
 **Repo:** https://github.com/masterdorime/Pyroscan (public, `main`). Raw drone data and the reference video are not committed; the demo DB, mission assets, Cesium bundle, and screenshots are.
-**Status: provider layer Phase 1-2 shipped; Phase 3 data layer shipped, both render blockers fixed; wide Terrain/Regional ships; Indonesia is a 2D map with four skins (slices 1-4 plus the 2D renderer); view modes Phase 1 shipped.** Weather (BMKG → Open-Meteo), NASA FIRMS detections, Copernicus 30 m terrain and Sentinel-2 imagery are fetched, cached and surfaced with source/age. The dashboard opens on **Indonesia** (globe + 38 province borders), then Drone / Terrain / Regional. Since 2026-11-18 the Sentinel-2 crop is drawn in Terrain/Regional, Regional draws a 60 km landscape from a 4-tile DEM and 2-scene imagery mosaic, and the wide layer falls back to the 15 km ring when its cache is missing. §9.24–26 state what the Indonesia shell does not do yet.
+**Status: provider layer Phase 1-2 shipped; Phase 3 data layer shipped, both render blockers fixed; wide Terrain/Regional ships; Indonesia is a 2D map with four skins (slices 1-4 plus the 2D renderer); view modes Phase 1 shipped.** Weather (BMKG → Open-Meteo), NASA FIRMS detections, Copernicus 30 m terrain and Sentinel-2 imagery are fetched, cached and surfaced with source/age. The dashboard opens on **Indonesia** (2D Canvas map + 38 province borders), then Drone / Terrain / Regional. Since 2026-11-18 the Sentinel-2 crop is drawn in Terrain/Regional, Regional draws a 60 km landscape from a 4-tile DEM and 2-scene imagery mosaic, and the wide layer falls back to the 15 km ring when its cache is missing. §9.24–26 state what the Indonesia shell does not do yet.
 
 Specs and plans:
 `Docs/specs/2026-11-16-free-provider-layer-design.md`,
@@ -664,14 +664,29 @@ COG-reader gate, §7.5). Keep this file in sync and push after each phase.
 
 **Fire-site 3D context and spread (2026-11-21):** `server/providers/site.py`
 builds an 18 km site at any province/detection: Copernicus DEM (257²),
-Sentinel-2 cloud-masked with a baked DEM hillshade, Open-Meteo weather and a
-deterministic `pyroscan-spread-0.1` model. The client opens it from `3D SITE`,
-installs a `CustomHeightmapTerrainProvider`, flies an oblique camera, and draws
-13 wind/terrain isochrones (0–360 min, 30 min steps) as terrain-clamped
-polylines with a play/pause and scrubber. Site controls zoom/reset on the site,
-never the mission orbit (this was the “globe” bug). Tested by
-`node spike/web/check-site.mjs`: real terrain height, camera controls, spread
-advance, back to map. It is terrain/imagery context, not drone photogrammetry.
+Sentinel-2 cloud-masked with a baked DEM hillshade, Open-Meteo current + hourly
+weather, and a Rothermel surface-fire model (`server/pipeline/rothermel.py`).
+The client opens it from `3D SITE`, installs a
+`CustomHeightmapTerrainProvider`, flies an oblique camera, and draws 13
+wind/terrain isochrones (0–360 min, 30 min steps) as terrain-clamped polylines
+with play/pause and a scrubber. Site scales are 4/18/60 km, each with its own
+DEM + Sentinel context. The rail shows risk, site facts, working layers, live
+sources and an explicit “no drone survey” card; the strip charts modelled area,
+rate, elevation and key events. Site controls zoom/reset on the site, never the
+mission orbit. Tested by `node spike/web/check-site.mjs`: real terrain height,
+camera controls, 4/60 km scales, spread advance, back to map.
+
+**Spread v2 — Rothermel (2026-11-21):** the site model is the same core used by
+BehavePlus/FARSITE/FlamMap: Rothermel 1972 with Albini corrections, explicit
+surface fuel models (tropical forest litter / timber litter / savanna / short
+grass), Simard dead-fuel moisture from RH/temperature, midflame wind (0.4 ×
+10 m), slope from the DEM, the BehavePlus wind limit, Anderson length-to-
+breadth, and hourly Open-Meteo wind. Head distance integrates the hourly rate.
+The research, citations and honest limits (single aggregate fuel, no peat
+smouldering, no crown/spotting/coupled atmosphere, uncalibrated for Indonesia)
+are in `Docs/specs/2026-11-21-spread-and-drone-tab.md`. That spec also records
+the Drone-tab plan: peripheral pairing, JPEG upload, per-site NodeODM job and
+mesh; currently disabled with “no drone survey”.
 
 ## 10. Environment
 

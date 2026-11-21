@@ -2146,13 +2146,15 @@ def site_builds_a_dem_context_and_caches():
 
         out = build_site(114, 0, cache_dir=Path(td), dem_reader=dem,
                          searcher=searcher, weather_reader=lambda e: None,
-                         force=True)
+                         hourly_reader=False, force=True)
         assert out["name"] == "Kalimantan Tengah"
         assert out["heightmap"]["width"] == 257
         assert out["imagery_url"] is None
         assert out["spread"]["frames"][-1]["t_min"] == 360
+        assert out["spread"]["model"].startswith("rothermel")
         again = build_site(114, 0, cache_dir=Path(td), dem_reader=dem,
-                           searcher=searcher, weather_reader=lambda e: None)
+                           searcher=searcher, weather_reader=lambda e: None,
+                           hourly_reader=False)
         assert again["id"] == out["id"]
         assert len(calls) == 1
     try:
@@ -2160,6 +2162,36 @@ def site_builds_a_dem_context_and_caches():
         raise AssertionError("a site outside Indonesia was accepted")
     except SiteUnavailable:
         pass
+
+
+@case
+def rothermel_responds_to_wind_moisture_and_slope():
+    from ..pipeline.rothermel import rate_of_spread
+
+    dry = rate_of_spread("short_grass", 0.06, 8, 0, 0)["rate_m_min"]
+    wet = rate_of_spread("short_grass", 0.20, 8, 0, 0)["rate_m_min"]
+    windy = rate_of_spread("short_grass", 0.06, 25, 0, 0)["rate_m_min"]
+    sloped = rate_of_spread("short_grass", 0.06, 8, 0, 25)["rate_m_min"]
+    assert 5 <= dry <= 60, dry
+    assert dry > wet, (dry, wet)
+    assert windy > dry, (windy, dry)
+    assert sloped > dry, (sloped, dry)
+
+
+@case
+def rothermel_ellipse_has_a_head_and_back():
+    from ..pipeline.rothermel import ellipse_frames, rate_of_spread
+
+    model = rate_of_spread("tropical_forest", 0.08, 12, 270, 5,
+                           aspect_deg=180)
+    frames = ellipse_frames(0, 114, model, horizon_min=360, step_min=30)
+    assert len(frames) == 13
+    last = frames[-1]
+    assert len(last["ring"]) == 24
+    head = last["head"]
+    # the head lies east of the ignition for a wind from the west
+    assert head["lon"] > 114
+    assert last["rate_m_min"] > 0
 
 
 if __name__ == "__main__":

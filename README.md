@@ -92,11 +92,16 @@ This is a working vertical slice, not a production deployment. Known gaps:
   Open-Meteo as the global fallback, regional fire detections from NASA FIRMS NRT,
   30 m context terrain from Copernicus DEM, and Sentinel-2 imagery cached as WebP.
   Every reading shows its source and age in the **Live data** card.
-- **View modes:** `Indonesia` (globe + 38 province borders, the default),
-  `Drone` (1.6 cm photogrammetry patch), `Terrain` (4 km of 10 m imagery over
-  30 m terrain) and `Regional` (60 km landscape from a 4-tile DEM and a 2-scene
-  Sentinel-2 mosaic, with a scale bar), each with its own camera, clamp and
-  resolution badge. Deep links: `#/<mission>/<mode>`.
+- **View modes:** `Indonesia` (2D Canvas map with four skins: Relief, Satellite,
+  Atlas, Flat; fire pins with hover; 38 province borders; click-select and
+  province plates), `Drone` (1.6 cm photogrammetry patch), `Terrain` (4 km of
+  10 m imagery over 30 m terrain) and `Regional` (60 km landscape from a 4-tile
+  DEM and a 2-scene Sentinel-2 mosaic, with a scale bar), each with its own
+  camera, clamp and resolution badge. Deep links: `#/<mission>/<mode>`.
+- **Fire-site recon (shipped):** click a FIRMS pin → `3D SITE`; 4/18/60 km
+  contexts from real Copernicus DEM + Sentinel-2, weather, a Rothermel spread
+  model with hourly wind, a site rail and forecast strip. No drone mesh exists
+  at a detection; the UI says so.
 - **Known gaps:** the wide imagery can show a faint tonal seam where its two
   satellite dates meet; the terrain is flat-shaded with no sun or atmosphere;
   and the wide layer falls back to a 15 km ring if its cache is missing. See

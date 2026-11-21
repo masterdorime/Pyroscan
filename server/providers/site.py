@@ -22,12 +22,13 @@ from .open_meteo import OpenMeteoProvider
 from .provinces import load, province_at
 from .province_plate import pick_tile_scenes
 from .sentinel2 import (pick_scene_mosaic, read_scene_mosaic, search_scenes)
-from ..pipeline import spread as spread_model
+from ..pipeline import rothermel
+import requests
 
 SITE_KM = 18.0
 SITE_SIZE = 257
 IMAGE_SIZE = 2048
-SITE_VERSION = 8
+SITE_VERSION = 11
 CACHE_TTL_S = 7 * 86400
 
 _CACHE: dict[tuple, tuple[float, dict]] = {}
@@ -93,10 +94,37 @@ def _spread_frames(lat: float, lon: float, rate: float, bearing: float,
     return frames
 
 
+def _hourly_forecast(lon: float, lat: float) -> list[dict]:
+    """Open-Meteo hourly weather: wind, RH, temperature, precipitation."""
+    url = "https://api.open-meteo.com/v1/forecast"
+    params = {
+        "latitude": lat, "longitude": lon,
+        "hourly": "temperature_2m,relative_humidity_2m,wind_speed_10m,"
+                  "wind_direction_10m,precipitation",
+        "forecast_days": 1, "timezone": "UTC",
+    }
+    resp = requests.get(url, params=params, timeout=20)
+    resp.raise_for_status()
+    hourly = resp.json().get("hourly") or {}
+    times = hourly.get("time") or []
+    rows = []
+    for i in range(min(8, len(times))):
+        rows.append({
+            "time": times[i],
+            "temp_c": (hourly.get("temperature_2m") or [None] * 8)[i],
+            "rh": (hourly.get("relative_humidity_2m") or [None] * 8)[i],
+            "wind_kmh": (hourly.get("wind_speed_10m") or [0] * 8)[i],
+            "wind_dir": (hourly.get("wind_direction_10m") or [0] * 8)[i],
+            "precip_mm": (hourly.get("precipitation") or [0] * 8)[i],
+        })
+    return rows
+
+
 def build_site(lon: float, lat: float, *, window_km: float = SITE_KM,
                cache_dir: Path | None = None,
                dem_reader=None, searcher=None, scene_reader=None,
-               weather_reader=None, force: bool = False) -> dict:
+               weather_reader=None, hourly_reader=None,
+               force: bool = False) -> dict:
     features = load()
     province = province_at(features, float(lon), float(lat))
     if province is None:
@@ -218,19 +246,41 @@ def build_site(lon: float, lat: float, *, window_km: float = SITE_KM,
 
     spread = None
     try:
-        hotspot = {"id": "site", "lat": float(lat), "lon": float(lon),
-                   "slope_deg": slope, "aspect_deg": aspect}
-        prediction = spread_model.predict(hotspot, weather or {}, horizons=(360,))
-        if prediction:
-            p = prediction[0]
-            spread = {
-                "rate_m_min": p["rate_m_min"],
-                "bearing_deg": p["bearing_deg"],
-                "risk": p["risk_level"],
-                "model": p["model_version"],
-                "frames": _spread_frames(float(lat), float(lon),
-                                         p["rate_m_min"], p["bearing_deg"]),
-            }
+        hourly = []
+        try:
+            hourly = (hourly_reader or _hourly_forecast)(
+                float(lon), float(lat)) if hourly_reader is not False else []
+        except Exception:
+            hourly = []
+        current = weather or {}
+        fuel = rothermel.DEFAULT_FUEL
+        samples = []
+        for hour in range(0, 7):
+            row = hourly[min(hour, len(hourly) - 1)] if hourly else {}
+            temp = row.get("temp_c", current.get("temp_c", 25.0)) or 25.0
+            rh = row.get("rh", current.get("humidity_pct", 60)) or 60
+            wind = row.get("wind_kmh", current.get("wind_speed_kmh", 0)) or 0
+            wdir = row.get("wind_dir", current.get("wind_dir_deg", 0)) or 0
+            precip = row.get("precip_mm", current.get("precip_mm", 0)) or 0
+            moisture = rothermel.moisture_from_weather(rh, temp, precip)
+            model = rothermel.rate_of_spread(
+                fuel, moisture, wind, wdir, slope, aspect)
+            samples.append({"t_h": hour, "model": model})
+        now = samples[0]["model"]
+        spread = {
+            "rate_m_min": now["rate_m_min"],
+            "bearing_deg": now["bearing_deg"],
+            "risk": rothermel.risk_from_rate(now["rate_m_min"]),
+            "model": now["model"],
+            "fuel": fuel,
+            "fuel_label": now["fuel_label"],
+            "moisture": now["moisture"],
+            "length_to_breadth": now["length_to_breadth"],
+            "wind_hourly": bool(hourly),
+            "frames": rothermel.ellipse_frames(
+                float(lat), float(lon), now, horizon_min=360, step_min=30,
+                samples=samples),
+        }
     except Exception:
         spread = None
 

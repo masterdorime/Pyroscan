@@ -1,57 +1,57 @@
 # LLM Benchmark — Ground Station (SPIKE-04 / DG-03)
 
-**Status:** Partial — 2 dari 4 kandidat terukur
-**Tanggal:** 2026-11-14
+**Status:** Partial — 2 of 4 candidates measured
+**Date:** 2026-11-14
 **Hardware:** Lenovo LOQ, RTX 4060 Laptop **8 GB** (8188 MiB), driver 581.86
 **Runtime:** Ollama 0.40.5, Python 3.14.7
 **Harness:** `benchmarks/bench_llm.py` (stdlib only)
 
 ---
 
-## 1. Mengapa benchmark ini ada
+## 1. Why this benchmark exists
 
-PRD v1.3.0 §9 DG-03 mewajibkan model LLM dipilih dari hasil pengukuran, bukan dari tabel benchmark internet. Semua angka di dokumen PRD sebelumnya adalah **estimasi pihak ketiga**. Dokumen ini menggantinya dengan angka dari mesin yang benar-benar akan dipakai di posko.
+PRD v1.3.0 §9 DG-03 requires the LLM to be chosen from measurement, not from a table found online. Every number in the earlier PRD was a **third-party estimate**. This document replaces them with numbers from the machine that will actually sit at the command post.
 
-## 2. Metode
+## 2. Method
 
-Beban kerja = **persis yang diminta FR-SRV-06**: JSON spasial masuk → advisory JSON keluar.
+The workload is exactly what FR-SRV-06 asks for: spatial JSON in → advisory JSON out.
 
-| Parameter | Nilai |
+| Parameter | Value |
 |---|---|
-| `num_ctx` | 8192 (eksplisit; Ollama default memilih 4K di < 24 GiB) |
-| `temperature` / `seed` | 0.2 / 42 (deterministik) |
-| `format` | `json` (structured output, sesuai kontrak) |
-| `think` | `false` (matikan reasoning trace) |
-| `keep_alive` | `0` → **setiap run membayar cold load**, sama seperti pipeline nyata yang membebaskan VRAM untuk NodeODM |
-| Panjang prompt | ~230 token (14 field spasial + instruksi) |
-| Output target | ~150–190 token |
+| `num_ctx` | 8192 (explicit; Ollama defaults to 4K below 24 GiB) |
+| `temperature` / `seed` | 0.2 / 42 (deterministic) |
+| `format` | `json` (structured output, per contract) |
+| `think` | `false` (reasoning traces off) |
+| `keep_alive` | `0` → **every run pays a cold load**, as the real pipeline does when it frees VRAM for NodeODM |
+| Prompt length | ~230 tokens (14 spatial fields + instructions) |
+| Output target | ~150–190 tokens |
 
-**Cara ukur:**
-* Throughput decode & prefill diambil dari field `eval_duration` / `prompt_eval_duration` milik Ollama sendiri (nanodetik), bukan dari stopwatch.
-* VRAM peak disampling `nvidia-smi --loop-ms=100` lewat satu proses panjang selama request berjalan.
-* Model di-*unload* (`keep_alive: 0`) sebelum setiap run agar tiap run mengukur cold start.
-* Placement GPU dibaca lewat probe terpisah setelah trial (`/api/ps` tidak bisa dipoll saat generasi berjalan — Ollama melayani satu request sekaligus).
-* Repeat: 3× untuk model utama (diambil median), 1× untuk model pembanding.
+**How it is measured:**
+* Decode and prefill throughput come from Ollama's own `eval_duration` / `prompt_eval_duration` fields (nanoseconds), not a stopwatch.
+* Peak VRAM is sampled by a single long-lived `nvidia-smi --loop-ms=100` process for the duration of the request.
+* The model is unloaded (`keep_alive: 0`) before every run so each run measures a cold start.
+* GPU placement is read by a separate probe after the trial (`/api/ps` cannot be polled during generation — Ollama serves one request at a time).
+* Repeats: 3× for the primary model (median reported), 1× for the comparison model.
 
 ---
 
-## 3. Hasil terukur
+## 3. Measured results
 
 | Model | Decode (t/s) | Prefill (t/s) | Wall, cold (s) | Output (tok) | VRAM peak | Placement | JSON valid |
 |---|---|---|---|---|---|---|---|
 | `qwen3.5:4b-q4_K_M` | **67.1** | 1112.5 | **11.4** | 152 | +3.97 GB | 100% GPU | 3/3 |
 | `gemma4:e4b` | 55.9 | 895.7 | 16.2 | 190 | +4.41 GB | 100% GPU | 1/1 |
 
-Catatan: `gemma4:e4b` dilaporkan 9.6 GB saat pull, tetapi build yang dimuat hanya menempati ~4.4 GB VRAM dan berjalan 100% GPU. Ukuran unduhan ≠ jejak VRAM.
+Note: `gemma4:e4b` reports 9.6 GB at pull time, but the build that loads occupies only ~4.4 GB of VRAM and runs 100% on GPU. Download size is not VRAM footprint.
 
-### 3.1. Belum terukur
+### 3.1. Not measured
 
-| Model | Alasan |
+| Model | Reason |
 |---|---|
-| `qwen3.5:9b` (~5.6 GB) | Unduhan terhenti di 9% — kecepatan jaringan 210–260 KB/s, estimasi > 1 jam per model |
-| `qwen3-vl:4b` (~3.3 GB) | Sama; dibatalkan agar tidak mengacaukan pengukuran (disk + bandwidth contention) |
+| `qwen3.5:9b` (~5.6 GB) | Download stalled at 9% — network at 210–260 KB/s, estimate > 1 hour per model |
+| `qwen3-vl:4b` (~3.3 GB) | Same; cancelled so it would not distort the measurement through disk and bandwidth contention |
 
-Blob parsial tersimpan dan pull bisa dilanjutkan kapan saja. Jalankan:
+Partial blobs are retained and the pull can resume at any time. Run:
 
 ```powershell
 ollama pull qwen3.5:9b
@@ -61,98 +61,71 @@ python benchmarks\bench_llm.py --repeats 3 qwen3.5:9b qwen3-vl:4b
 
 ---
 
-## 4. Uji terhadap KPI PRD §7
+## 4. Check against the PRD §7 KPIs
 
-| KPI | Target | Terukur | Status |
+| KPI | Target | Measured | Status |
 |---|---|---|---|
-| Latency advisory (ODM DONE → advisory tersimpan) | < 90 s | **11.4 s** (termasuk cold load) | ✅ lulus 7.9× |
-| Kualitas JSON kontrak | parse + 3 keys + ≥3 action items | 3/3 run | ✅ lulus |
+| Advisory latency (ODM DONE → advisory stored) | < 90 s | **11.4 s** (including cold load) | ✅ passes by 7.9× |
+| JSON contract quality | parses + 3 keys + ≥3 action items | 3/3 runs | ✅ passes |
 
-**Kesimpulan penting:** model 4B sudah **jauh** melewati KPI latency. Model 9B bukan syarat agar sistem jalan — ia peningkatan kualitas, bukan kebutuhan. Ini menurunkan urgensi unduhan 5.6 GB.
+**The important conclusion:** the 4B model already clears the latency KPI by a wide margin. The 9B model is not required for the system to work — it is a quality upgrade, not a necessity. That lowers the urgency of the 5.6 GB download.
 
 ---
 
-## 5. Temuan kualitas (lebih penting dari throughput)
+## 5. Quality findings (more important than throughput)
 
-Kedua model menghasilkan bahasa Indonesia yang wajar dan JSON valid. Tapi ada dua masalah yang harus ditangani di kode, bukan di dokumen:
+Both models produce reasonable Indonesian and valid JSON. But two problems must be handled in code, not in the document:
 
-### 5.1. LLM mengubah `severity` yang diberikan model numerik
+### 5.1. The LLM changed the severity the engine supplied
 
-Input menyatakan `risk_level: HIGH` dari simulation engine. Hasil:
+The input states `risk_level: HIGH` from the simulation engine. Output:
 
-| Model | severity keluaran |
+| Model | `severity` returned |
 |---|---|
-| `qwen3.5:4b-q4_K_M` | **CRITICAL** ← naik satu tingkat |
+| `qwen3.5:4b-q4_K_M` | **CRITICAL** ← escalated one level |
 | `gemma4:e4b` | HIGH |
 
-**Rekomendasi:** `severity` **tidak boleh** diproduksi oleh LLM. Nilai itu harus berasal dari simulation engine yang deterministik; LLM hanya menulis `summary_narrative` dan `action_items`. Kalau tidak, dua misi dengan data identik bisa memberi tingkat ancaman berbeda — tidak dapat diterima untuk keputusan evakuasi.
+**Recommendation:** `severity` must **not** be produced by the LLM. It comes from the deterministic simulation engine; the LLM writes only `summary_narrative` and `action_items`. Otherwise two missions with identical data can report different threat levels — unacceptable for an evacuation decision.
 
-### 5.2. Terdapat tindakan yang tidak masuk akal secara teknis
+### 5.2. Some actions were technically nonsensical
 
-`qwen3.5:4b-q4_K_M` menghasilkan *"Tim SAR membentuk barikade air di jalur prediksi"*. Barikade air tidak menghentikan kebakaran hutan; ini halusinasi domain. `gemma4:e4b` menulis *"jalur evakuasi alternatif yang menjauhi arah angin (barat daya ke timur laut)"* — arah yang disebut justru arah **rambat** api, bukan arah menjauh.
+`qwen3.5:4b-q4_K_M` produced *"Tim SAR membentuk barikade air di jalur prediksi"* — a water barricade does not stop a forest fire; this is a domain hallucination. `gemma4:e4b` wrote *"jalur evakuasi alternatif yang menjauhi arah angin (barat daya ke timur laut)"* — the direction it names is the direction the fire **spreads**, not a direction away from it.
 
-**Rekomendasi:**
-1. `action_items` dibatasi ke kosakata tindakan yang sudah ada (evakuasi, firebreak, rute, koordinasi) lewat prompt enumerasi + validasi pasca-generasi.
-2. Setiap advisory wajib punya disclaimer + tombol "ini draf, verifikasi lapangan" di dashboard. LLM tidak boleh menjadi satu-satunya sumber rekomendasi SAR.
-3. Simpan `prompt_sha` + `model` + `seed` di tabel advisory untuk audit.
-
----
-
-### 5.3. Perbaikan dan verifikasi
-
-Kedua cacat di atas ditutup di kode, bukan di prompt: `server/llm_agent/advisory.py`.
-
-| Mekanisme | Efek |
-|---|---|
-| `severity` diambil dari `fusion.risk_level`, tidak pernah diminta ke model | LLM tidak punya kesempatan menaikkan/menurunkan tingkat ancaman |
-| `action_ids` dipilih dari `ACTION_CATALOG` (6 id tertutup) | Aksi di luar katalog mustahil tampil; id tak dikenal masuk `dropped_ids` |
-| Teks aksi dirender dari katalog, bukan dari model | Wording tidak bisa berhalusinasi |
-| Urutan aksi di-*sort* mengikuti prioritas katalog | Evakuasi selalu di atas patroli, apa pun urutan dari model |
-| JSON rusak → fallback 2 aksi prioritas tertinggi + `error` flag | Advisory tidak pernah kosong |
-| `risk_level` tak dikenal → `MEDIUM` | Tidak pernah diam-diam turun ke `LOW` |
-
-**Verifikasi (live, `qwen3.5:4b-q4_K_M`, seed 42):**
-
-```json
-{
-  "severity": "HIGH",
-  "action_ids": ["EVAC_IMMEDIATE", "FIREBREAK", "AERIAL", "PATROL"],
-  "audit": { "prompt_sha": "a5b7295ccafc202b", "dropped_ids": [], "error": null }
-}
-```
-
-Sebelum perbaikan, model yang sama mengembalikan `CRITICAL` dan "barikade air". Sesudahnya: `HIGH` dan empat aksi katalog. Self-check: 10/10 lulus (`python server/llm_agent/advisory.py`).
-
-Sisa cacat kualitas yang belum ditutup: narasi masih bisa canggung secara bahasa (contoh terukur: *"melewati kontur berkontur curam"*). Ini kosmetik dan tidak mempengaruhi keputusan, jadi dibiarkan sampai model final ditentukan.
-
-
-
-* **67 t/s** pada 4B berarti ~300 token advisory selesai dalam **~4,5 s** setelah model termuat. Cold load menambah ~6–7 s.
-* **Wall 11,4 s** dengan `keep_alive=0` adalah angka realistis untuk pipeline misi tunggal (satu advisory per penerbangan).
-* **Prefill 1100 t/s** berarti prompt 230 token nyaris gratis (~0,2 s). Menambah konteks spasial tidak akan menjadi bottleneck.
-* **VRAM 3,97 GB** menyisakan ~3,2 GB untuk NodeODM. Ini mengonfirmasi NFR-RELI-02 bisa dipenuhi **hanya jika** keduanya serial. Kalau dipaksa paralel, 3,97 + 2–4 GB > 7,2 GB usable → OOM.
+**Recommendation:**
+1. `action_items` is restricted to a closed action vocabulary (evacuation, firebreak, route, coordination) via an enumerated prompt plus post-generation validation.
+2. Every advisory carries a disclaimer and a "draft — verify in the field" label in the dashboard. The LLM must never be the only source of a SAR recommendation.
+3. Store `prompt_sha` + `model` + `seed` in the advisory table for audit.
 
 ---
 
-## 7. Rekomendasi
+## 6. Performance interpretation
 
-1. **Default produksi: `qwen3.5:4b-q4_K_M`.** Terukur, lolos KPI dengan margin besar, hemat 1,6 GB VRAM dibanding 9B.
-2. **`qwen3.5:9b` tetap kandidat**, tetapi hanya jika setelah diunduh terbukti kualitas narasinya jauh lebih baik **dan** tetap > 30 t/s. Jangan menunggu model ini untuk mulai menulis pipeline.
-3. **`gemma4:e4b` tidak dipilih** sebagai default: lebih lambat 17%, output lebih panjang (190 vs 152 token), dan tidak ada keunggulan terukur di tugas ini.
-4. **Pindahkan `severity` keluar dari LLM** (lihat §5.1). Ini perubahan kontrak data, bukan sekadar prompt.
-5. Ulangi benchmark ini setelah `num_ctx` final ditentukan dan setelah NodeODM terpasang, untuk mengukur VRAM gabungan pada urutan nyata (ODM → unload → LLM).
+* **67 t/s** on a 4B model means a ~300-token advisory completes in **~4.5 s** once loaded. Cold load adds ~6–7 s.
+* **Wall 11.4 s** with `keep_alive=0` is the realistic figure for a single-mission pipeline (one advisory per flight).
+* **Prefill at 1100 t/s** makes a 230-token prompt essentially free (~0.2 s). Adding spatial context will not become the bottleneck.
+* **3.97 GB VRAM** leaves ~3.2 GB for NodeODM. This confirms NFR-RELI-02 can only be met **if** the two run in sequence. Forced parallel: 3.97 + 2–4 GB > 7.2 GB usable → OOM.
 
 ---
 
-## 8. Reproduksi
+## 7. Recommendations
+
+1. **Production default: `qwen3.5:4b-q4_K_M`.** Measured, clears the KPI by a wide margin, saves 1.6 GB of VRAM versus the 9B.
+2. **`qwen3.5:9b` stays a candidate**, but only if after downloading it proves clearly better at narrative while holding > 30 t/s. Do not wait for it to start writing the pipeline.
+3. **`gemma4:e4b` is not selected:** 17% slower, longer output (190 vs 152 tokens), and no measured advantage on this task.
+4. **Move `severity` out of the LLM** (see §5.1). This is a data-contract change, not just a prompt tweak.
+5. Re-run this benchmark once the final `num_ctx` is settled and NodeODM is installed, to measure combined VRAM on the real sequence (ODM → unload → LLM).
+
+---
+
+## 8. Reproducing
 
 ```powershell
-# satu model
+# one model
 python benchmarks\bench_llm.py --repeats 3 qwen3.5:4b-q4_K_M
 
-# semua model di daftar MODELS
+# every model in the MODELS list
 python benchmarks\bench_llm.py
 ```
 
-Hasil mentah (per-run, termasuk output teks lengkap) tersimpan di `benchmarks/results/`.
-Jalankan **tanpa** proses `ollama pull` lain yang berjalan bersamaan — kontensi disk menggeser `wall_s` secara signifikan.
+Raw results (per run, including the full output text) are written to `benchmarks/results/`.
+Run it **without** another `ollama pull` in flight — disk contention shifts `wall_s` significantly.

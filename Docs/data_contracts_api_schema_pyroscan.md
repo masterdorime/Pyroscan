@@ -1,35 +1,37 @@
 # API & Data Schema Specification — PyroScan
 
 **Version:** 1.1.0
-**Target:** Edge Payload, Server Pipeline, dan CesiumJS Dashboard
-**Selaras dengan:** PRD v1.3.1, `server/llm_agent/advisory.py`
+**Target:** Edge Payload, Server Pipeline, and CesiumJS Dashboard
+**Aligned with:** PRD v1.3.1, `server/llm_agent/advisory.py`
 
-> **Changelog 1.1.0** — LoRa lat/lon `float32` → `int32` (presisi 1e-7, ukuran tetap 16 B); `spatial_fusion.json` dapat `schema_version` + `mission_mode` + `burn_scar`; kontrak advisory mengikuti katalog aksi tertutup; endpoint `.b3dm` dihapus; tambah skema SQLite dan kontrak heightmap. Lihat §7.
+> **Changelog 1.1.0** — LoRa lat/lon `float32` → `int32` (1e-7 precision, still 16 B); `spatial_fusion.json` gains `schema_version` + `mission_mode` + `burn_scar`; advisory contract follows the closed action catalog; `.b3dm` endpoint removed; SQLite schema and heightmap contract added. See §7.
 
 ---
 
 ## 1. LoRa Binary Telemetry Payload (16-Byte Compact Struct)
 
-Digunakan untuk transmisi radio jarak jauh dari ESP32 di drone ke Ground Station ketika sinyal seluler tidak tersedia. **Phase 2** — kontrak didefinisikan sekarang agar firmware dan parser tidak perlu diubah dua kali.
+Used for long-range radio transmission from the ESP32 on the drone to the ground station when there is no cellular signal. **Phase 2** — the contract is defined now so firmware and parser do not have to change twice.
+
+**Purpose:** the frame exists to mark a YOLO-detected fire pinpoint while the drone is still airborne. It is not a data exchange channel — photos still arrive over Wi-Fi after landing.
 
 ### 1.1. Byte Structure Layout
 
-| Byte Offset | Variable | Type | Skala / Unit | Description |
+| Byte offset | Variable | Type | Scale / unit | Description |
 |---|---|---|---|---|
-| `0..3` | `lat_e7` | `Int32` | derajat $\times 10^{7}$ | Latitude WGS84 |
-| `4..7` | `lon_e7` | `Int32` | derajat $\times 10^{7}$ | Longitude WGS84 |
-| `8..9` | `altitude` | `Int16` | meter | Ketinggian relatif dari take-off |
-| `10` | `fire_conf` | `UInt8` | $0 - 100$ | Confidence deteksi api (%) |
-| `11` | `smoke_conf` | `UInt8` | $0 - 100$ | Confidence deteksi asap (%) |
-| `12..15` | `timestamp` | `UInt32` | UNIX epoch (s) | Waktu capture dari GNSS |
+| `0..3` | `lat_e7` | `Int32` | degrees $\times 10^{7}$ | WGS84 latitude |
+| `4..7` | `lon_e7` | `Int32` | degrees $\times 10^{7}$ | WGS84 longitude |
+| `8..9` | `altitude` | `Int16` | metres | Height relative to takeoff |
+| `10` | `fire_conf` | `UInt8` | $0 - 100$ | Fire detection confidence (%) |
+| `11` | `smoke_conf` | `UInt8` | $0 - 100$ | Smoke detection confidence (%) |
+| `12..15` | `timestamp` | `UInt32` | UNIX epoch (s) | Capture time from GNSS |
 
-**Total: 16 byte.** Tidak berubah dari v1.0.0.
+**Total: 16 bytes.** Unchanged from v1.0.0.
 
-### 1.2. Mengapa `int32`, bukan `float32`
+### 1.2. Why `int32` instead of `float32`
 
-`float32` hanya memberi ~7 digit signifikan. Pada lat -6,9175 (2 digit di depan koma), sisa presisi jatuh ke ~1,1 m *terbaik* dan memburuk seiring besarnya nilai. `int32` dengan skala $10^{7}$ memberi **1,1 cm** dan eksak — tanpa menambah satu byte pun.
+`float32` gives only ~7 significant digits. At latitude -6.9175 (two digits before the decimal point), the remaining precision falls to ~1.1 m *at best* and degrades as the value grows. `int32` scaled by $10^{7}$ gives **1.1 cm** and is exact — without adding a single byte.
 
-Rentang aman: lat $\pm 900{,}000{,}000$ dan lon $\pm 1{,}800{,}000{,}000$, keduanya di dalam `int32` ($\pm 2{,}147{,}483{,}647$).
+Safe range: latitude $\pm 900{,}000{,}000$ and longitude $\pm 1{,}800{,}000{,}000$, both inside `int32` ($\pm 2{,}147{,}483{,}647$).
 
 ### 1.3. C++ Data Struct Definition (ESP32 Firmware)
 
@@ -44,18 +46,18 @@ struct __attribute__((__packed__)) PyroScanPacket {
 }; // Total: 16 Bytes
 ```
 
-### 1.4. Aturan Wire Format
+### 1.4. Wire Format Rules
 
-* **Endianness: little-endian**, eksplisit di kedua sisi. Jangan mengandalkan `__BYTE_ORDER__` host — dokumentasikan sebagai LE dan konversi bila perlu.
-* **Tidak ada CRC aplikasi.** SX1262 punya CRC hardware; aktifkan (`radio.setCRC(true)`) dan andalkan paket dengan CRC gagal dibuang di radio.
-* Timestamp berasal dari GNSS, bukan jam HP. Paket dengan timestamp `0` harus ditolak receiver.
-* Parser menerima pula `RSSI` dan `SNR` dari radio, lalu menyimpannya di tabel `lora_packet` (§5).
+* **Endianness: little-endian**, explicit on both sides. Do not rely on the host's `__BYTE_ORDER__` — document it as LE and convert if needed.
+* **No application-level CRC.** The SX1262 has hardware CRC; enable it (`radio.setCRC(true)`) and discard failed packets at the radio.
+* The timestamp comes from GNSS, not the phone clock. A packet with timestamp `0` must be rejected by the receiver.
+* The parser also accepts `RSSI` and `SNR` from the radio and stores them in the `lora_packet` table (§5).
 
 ---
 
 ## 2. Server Spatial Data Fusion Schema (`spatial_fusion.json`)
 
-Format pertukaran internal server posko setelah photogrammetry, YOLO, dan cuaca selesai. Ini **satu-satunya** input untuk simulation engine dan LLM advisory.
+The internal exchange format of the command-post server after photogrammetry, YOLO, and weather complete. This is the **only** input to the simulation engine and the LLM advisory.
 
 ```json
 {
@@ -110,7 +112,7 @@ Format pertukaran internal server posko setelah photogrammetry, YOLO, dan cuaca 
     },
     "spread_prediction": {
       "type": "object",
-      "description": "Horizon utama (30-60 menit). Hanya untuk MODE-A.",
+      "description": "Primary horizon (30-60 min). MODE-A only.",
       "properties": {
         "predicted_lat": { "type": "number", "example": -6.912000 },
         "predicted_lon": { "type": "number", "example": 107.625000 },
@@ -122,12 +124,12 @@ Format pertukaran internal server posko setelah photogrammetry, YOLO, dan cuaca 
     },
     "spread_prediction_alt": {
       "type": "array",
-      "description": "Horizon tambahan. Sama bentuknya dengan spread_prediction.",
+      "description": "Additional horizons. Same shape as spread_prediction.",
       "items": { "type": "object" }
     },
     "burn_scar": {
       "type": "object",
-      "description": "Hanya untuk MODE-B.",
+      "description": "MODE-B only.",
       "properties": {
         "area_m2": { "type": "number", "example": 4200.0 },
         "perimeter_m": { "type": "number", "example": 310.5 },
@@ -138,43 +140,43 @@ Format pertukaran internal server posko setelah photogrammetry, YOLO, dan cuaca 
     "wind_direction_convention": {
       "type": "string",
       "const": "FROM",
-      "description": "wind_direction_deg adalah arah DARI mana angin bertiup (meteorologis). 225 = angin dari barat daya, api merambat ke timur laut."
+      "description": "wind_direction_deg is the direction the wind blows FROM (meteorological). 225 = wind from the south-west, fire spreads to the north-east."
     }
   }
 }
 ```
 
-> **Jebakan yang harus dihindari:** `wind_direction_deg` memakai konvensi **FROM** (meteorologis). Vektor rambat api = arah **TO** = `wind_direction_deg + 180`. Salah tanda di sini membalik seluruh prediksi.
+> **Trap to avoid:** `wind_direction_deg` uses the **FROM** convention (meteorological). The fire spread vector is the **TO** direction = `wind_direction_deg + 180`. Getting the sign wrong reverses the entire prediction.
 
 ---
 
 ## 3. Local LLM Advisory Contract
 
-Implementasi acuan: `server/llm_agent/advisory.py`. Kontrak ini **dipaksakan oleh kode**, bukan oleh prompt.
+Reference implementation: `server/llm_agent/advisory.py`. This contract is **enforced by code**, not by prompt wording.
 
-### 3.1. Input: hanya subset `spatial_fusion.json`
+### 3.1. Input: only a subset of `spatial_fusion.json`
 
-LLM menerima angka, **bukan** `risk_level` sebagai instruksi. `severity` dihitung di luar model.
+The LLM receives numbers, **not** `risk_level` as an instruction. `severity` is computed outside the model.
 
-### 3.2. Katalog aksi tertutup
+### 3.2. Closed action catalog
 
-| ID | Teks yang dirender ke UI |
+| ID | Text rendered into the UI |
 |---|---|
-| `EVAC_IMMEDIATE` | Evakuasi segera warga pada sektor yang dilalui arah rambat api. |
-| `EVAC_ROUTE` | Aktifkan rute evakuasi alternatif yang menjauhi arah rambat, bukan mengikuti arah angin. |
-| `FIREBREAK` | Bangun firebreak/sekat bakar pada kontur yang ditentukan di depan lidah api. |
-| `AERIAL` | Ajukan pemadaman udara (water bombing) pada koordinat prediksi. |
-| `PATROL` | Tingkatkan patroli dan pemantauan hotspot di sepanjang jalur prediksi. |
-| `EARLY_WARNING` | Aktifkan peringatan dini dan koordinasi lintas instansi. |
+| `EVAC_IMMEDIATE` | Evacuate residents immediately from the sector the fire front will cross. |
+| `EVAC_ROUTE` | Open an alternate evacuation route away from the spread direction, not along the wind direction. |
+| `FIREBREAK` | Build a firebreak on the designated contour ahead of the fire's leading edge. |
+| `AERIAL` | Request aerial suppression (water bombing) at the predicted coordinates. |
+| `PATROL` | Increase patrol and hotspot monitoring along the predicted path. |
+| `EARLY_WARNING` | Activate early warning and cross-agency coordination. |
 
-Model hanya mengembalikan `action_ids`. Teks dirender dari tabel ini di server.
+The model returns only `action_ids`. The text is rendered from this table on the server.
 
-### 3.3. Request ke Ollama
+### 3.3. Request to Ollama
 
 ```json
 {
   "model": "qwen3.5:4b-q4_K_M",
-  "prompt": "<lihat build_prompt()>",
+  "prompt": "<see build_prompt()>",
   "stream": false,
   "format": "json",
   "think": false,
@@ -183,28 +185,28 @@ Model hanya mengembalikan `action_ids`. Teks dirender dari tabel ini di server.
 }
 ```
 
-### 3.4. Response yang diharapkan dari model (tidak dipercaya mentah)
+### 3.4. Expected model response (never trusted raw)
 
 ```json
 {
-  "summary_narrative": "Api bergerak cepat ke timur laut ...",
+  "summary_narrative": "The fire is moving quickly to the north-east ...",
   "action_ids": ["EVAC_IMMEDIATE", "FIREBREAK", "AERIAL", "PATROL"]
 }
 ```
 
-`severity` dan `action_items` **tidak** diminta ke model. Jika model tetap mengirimnya, nilainya dibuang.
+`severity` and `action_items` are **not** requested from the model. If the model returns them anyway, they are discarded.
 
-### 3.5. Advisory final (yang disimpan dan dikirim ke UI)
+### 3.5. Final advisory (what is stored and sent to the UI)
 
 ```json
 {
   "severity": "HIGH",
-  "summary_narrative": "Api bergerak cepat menuju titik -6.912, 107.625 dalam 45 menit ...",
+  "summary_narrative": "The fire is moving quickly toward -6.912, 107.625 within 45 minutes ...",
   "action_items": [
-    "Evakuasi segera warga pada sektor yang dilalui arah rambat api.",
-    "Bangun firebreak/sekat bakar pada kontur yang ditentukan di depan lidah api.",
-    "Ajukan pemadaman udara (water bombing) pada koordinat prediksi.",
-    "Tingkatkan patroli dan pemantauan hotspot di sepanjang jalur prediksi."
+    "Evacuate residents immediately from the sector the fire front will cross.",
+    "Build a firebreak on the designated contour ahead of the fire's leading edge.",
+    "Request aerial suppression (water bombing) at the predicted coordinates.",
+    "Increase patrol and hotspot monitoring along the predicted path."
   ],
   "action_ids": ["EVAC_IMMEDIATE", "FIREBREAK", "AERIAL", "PATROL"],
   "audit": {
@@ -217,42 +219,42 @@ Model hanya mengembalikan `action_ids`. Teks dirender dari tabel ini di server.
 }
 ```
 
-**Aturan validasi (implemented):**
+**Validation rules (implemented):**
 
-| Kondisi | Perilaku |
+| Condition | Behaviour |
 |---|---|
-| `severity` dari model ≠ engine | Diabaikan; pakai engine |
-| `risk_level` engine di luar enum | → `MEDIUM` |
-| `action_ids` berisi id tak dikenal | Masuk `dropped_ids`, tidak ditampilkan |
-| `action_ids` kosong setelah filter | Fallback 2 id prioritas tertinggi |
-| Urutan `action_ids` dari model | Di-sort ulang mengikuti urutan katalog |
-| JSON tidak bisa di-parse | `error: "unparseable_json"`, advisory tetap berisi aksi fallback |
-| `summary_narrative` kosong/bukan string | String kosong, `error` tidak diubah |
+| `severity` from the model ≠ engine | Ignored; the engine value is used |
+| `risk_level` outside the enum | → `MEDIUM` |
+| `action_ids` contains an unknown id | Goes into `dropped_ids`, not displayed |
+| `action_ids` empty after filtering | Falls back to the two highest-priority ids |
+| Model-supplied `action_ids` order | Re-sorted to catalog order |
+| JSON cannot be parsed | `error: "unparseable_json"`, advisory still carries fallback actions |
+| `summary_narrative` empty / not a string | Empty string, `error` unchanged |
 
 ---
 
 ## 4. REST API (FastAPI)
 
-Base: `http://<posko-lan>:8000/api/v1`
+Base: `http://<command-post-lan>:8000/api/v1`
 
-| Method | Endpoint | Deskripsi | Response |
+| Method | Endpoint | Description | Response |
 |---|---|---|---|
-| `GET` | `/health` | Status server, DB, GPU, Ollama | JSON |
-| `GET` | `/missions` | Daftar misi (paginated) | `Mission[]` |
-| `POST` | `/missions` | Buat misi dari folder foto | `Mission` |
-| `GET` | `/missions/{id}` | Detail misi + status pipeline | `Mission` |
-| `GET` | `/missions/latest` | Misi terakhir & telemetri | `Mission` |
+| `GET` | `/health` | Server, DB, GPU, Ollama status | JSON |
+| `GET` | `/missions` | Mission list (paginated) | `Mission[]` |
+| `POST` | `/missions` | Create a mission from a photo folder | `Mission` |
+| `GET` | `/missions/{id}` | Mission detail + pipeline status | `Mission` |
+| `GET` | `/missions/latest` | Latest mission and telemetry | `Mission` |
 | `GET` | `/missions/{id}/fusion` | `spatial_fusion.json` | JSON (§2) |
-| `GET` | `/missions/{id}/advisory` | Advisory terakhir | JSON (§3.5) |
-| `POST` | `/missions/{id}/advisory` | Regenerate advisory | JSON (§3.5) |
-| `GET` | `/missions/{id}/heightmap` | Heightmap terrain untuk Cesium | JSON (§6) |
+| `GET` | `/missions/{id}/advisory` | Latest advisory | JSON (§3.5) |
+| `POST` | `/missions/{id}/advisory` | Regenerate the advisory | JSON (§3.5) |
+| `GET` | `/missions/{id}/heightmap` | Terrain heightmap for Cesium | JSON (§6) |
 | `GET` | `/missions/{id}/ortho.tif` | Orthophoto GeoTIFF | `image/tiff` |
-| `GET` | `/missions/{id}/mesh.glb` | Mesh 3D bertekstur | `model/gltf-binary` |
-| `GET` | `/missions/{id}/scar.geojson` | Polygon burn scar (MODE-B) | `application/geo+json` |
-| `GET` | `/events` | **SSE**: progres misi | `text/event-stream` |
-| `POST` | `/lora/ingest` | Terima paket dari receiver serial | JSON |
+| `GET` | `/missions/{id}/mesh.glb` | Textured 3D mesh | `model/gltf-binary` |
+| `GET` | `/missions/{id}/scar.geojson` | Burn-scar polygon (MODE-B) | `application/geo+json` |
+| `GET` | `/events` | **SSE**: mission progress | `text/event-stream` |
+| `POST` | `/lora/ingest` | Receive a packet from the serial receiver | JSON |
 
-**Dihapus dari v1.0.0:** `GET /tiles/3d/{z}/{x}/{y}.b3dm`. ODM tidak menghasilkan 3D Tiles; konversinya butuh Cesium ion atau toolchain tambahan yang bertentangan dengan NFR-RELI-01. Mesh dilayani sebagai satu `.glb` utuh lalu diposisikan di Cesium via `Model.fromGltfAsync`.
+**Removed from v1.0.0:** `GET /tiles/3d/{z}/{x}/{y}.b3dm`. ODM does not produce 3D Tiles, and converting requires Cesium ion or an extra toolchain that conflicts with NFR-RELI-01. The mesh is served as a single `.glb` and positioned in Cesium with `Model.fromGltfAsync`.
 
 ### 4.1. SSE event shape
 
@@ -264,13 +266,13 @@ event: mission_update
 data: {"mission_id":"FLIGHT_20261114_001","stage":"DONE","progress":1.0,"advisory_id":"ADV-20261114-01"}
 ```
 
-Tahapan (`stage`): `CAPTURING` → `PHOTOGRAMMETRY` → `FUSION` → `SIMULATION` → `ADVISORY` → `DONE` | `FAILED`.
+Stages (`stage`): `CAPTURING` → `PHOTOGRAMMETRY` → `FUSION` → `SIMULATION` → `ADVISORY` → `DONE` | `FAILED`.
 
 ---
 
 ## 5. SQLite Schema (`pyroscan.db`)
 
-Tanpa Postgres, tanpa PostGIS. Semua timestamp ISO-8601 UTC.
+No Postgres, no PostGIS. All timestamps are ISO-8601 UTC.
 
 ```sql
 PRAGMA journal_mode = WAL;
@@ -325,7 +327,7 @@ CREATE TABLE weather_obs (
   mission_id    TEXT NOT NULL REFERENCES mission(id) ON DELETE CASCADE,
   observed_at   TEXT NOT NULL,
   wind_speed_kmh   REAL,
-  wind_dir_deg     REAL,   -- konvensi FROM (meteorologis)
+  wind_dir_deg     REAL,   -- FROM convention (meteorological)
   humidity_pct     REAL,
   temperature_c    REAL,
   source           TEXT DEFAULT 'open-meteo',
@@ -363,16 +365,16 @@ CREATE TABLE lora_packet (
 );
 ```
 
-**Catatan desain:**
-* `severity` di tabel `advisory` berasal dari engine, bukan model — konsisten dengan §3.
-* `action_ids_json` disimpan sebagai id, bukan teks, agar wording bisa diubah tanpa migrasi data.
-* `lora_packet.crc_ok` menyimpan paket yang ditolak hardware CRC untuk diagnosis lapangan.
+**Design notes:**
+* `severity` in the `advisory` table comes from the engine, not the model — consistent with §3.
+* `action_ids_json` stores ids rather than text so wording can change without a data migration.
+* `lora_packet.crc_ok` keeps packets rejected by hardware CRC for field diagnosis.
 
 ---
 
 ## 6. Heightmap Terrain Contract (Cesium)
 
-Pengganti tileset quantized-mesh. Satu payload per misi.
+Replaces the quantized-mesh tileset. One payload per mission.
 
 ```json
 {
@@ -385,28 +387,28 @@ Pengganti tileset quantized-mesh. Satu payload per misi.
   "north": -6.9160,
   "height_scale_m": 1.0,
   "geoid_offset_m": -1.42,
-  "heights_m": [ 748.3, 748.9, 749.4, "..." ]
+  "heights_m": [ 748.3, 748.9, 749.4, "... " ]
 }
 ```
 
-**Aturan:**
-* `heights_m` = array `width * height` nilai float, urut baris-mayor dari barat laut.
-* **`geoid_offset_m` wajib diisi.** ODM menghasilkan tinggi di atas MSL (EGM96); `CustomHeightmapTerrainProvider` menginterpretasikan tinggi di atas ellipsoid. Tanpa offset, terrain akan tampak bergeser vertikal beberapa meter dan pin hotspot tidak menempel di permukaan.
-* `height_scale_m` untuk eksagerasi vertikal di UI (default 1.0, jangan > 2.0 — pin jadi menyesatkan).
-* Downsample DEM ke 256×256 lewat `rasterio` (resampling bilinear). Untuk area 100×100 m itu ~40 cm/piksel, cukup untuk visualisasi dan tetap ringan.
-* Masking (FR-DSH-05): provider dibatasi ke `Rectangle(west, south, east, north)`. Di luar itu Cesium tidak merender terrain misi.
+**Rules:**
+* `heights_m` is a `width * height` array of floats in row-major order starting from the north-west corner.
+* **`geoid_offset_m` is mandatory.** ODM produces heights above MSL (EGM96); `CustomHeightmapTerrainProvider` interprets heights above the ellipsoid. Without the offset, terrain shifts vertically by several metres and hotspot pins no longer sit on the surface.
+* `height_scale_m` is for vertical exaggeration in the UI (default 1.0, never above 2.0 — pins become misleading).
+* Downsample the DEM to 256×256 with `rasterio` (bilinear resampling). Over 100×100 m that is ~40 cm/pixel — enough for visualisation and still light.
+* Masking (FR-DSH-05): the provider is bounded to `Rectangle(west, south, east, north)`. Outside it, Cesium does not render mission terrain.
 
 ---
 
 ## 7. Changelog
 
 ### 1.1.0
-* **§1:** LoRa `lat`/`lon` `float32` → **`int32` skala $10^7`**. Presisi naik dari ~1,1 m ke 1,1 cm, ukuran tetap 16 byte. Tambah aturan endianness, CRC hardware, dan penolakan timestamp `0`.
-* **§2:** `spatial_fusion.json` dapat `schema_version`, `mission_mode`, `photogrammetry`, `spread_prediction_alt`, `burn_scar`. Tambah peringatan konvensi arah angin FROM vs TO.
-* **§3:** kontrak advisory ditulis ulang mengikuti implementasi nyata — katalog aksi tertutup, `severity` dari engine, tabel perilaku validasi, field `audit`.
-* **§4:** endpoint `.b3dm` dihapus; tambah `heightmap`, `mesh.glb`, `scar.geojson`, `/events` (SSE), `/lora/ingest`, `/health`. Tambah bentuk event SSE.
-* **§5:** skema SQLite (baru).
-* **§6:** kontrak heightmap Cesium (baru), termasuk offset geoid.
+* **§1:** LoRa `lat`/`lon` `float32` → **`int32` scaled by $10^7$**. Precision rises from ~1.1 m to 1.1 cm with the same 16 bytes. Added endianness rules, hardware CRC, and rejection of timestamp `0`.
+* **§2:** `spatial_fusion.json` gains `schema_version`, `mission_mode`, `photogrammetry`, `spread_prediction_alt`, `burn_scar`. Added the wind direction FROM vs TO warning.
+* **§3:** advisory contract rewritten to follow the actual implementation — closed action catalog, `severity` from the engine, validation behaviour table, `audit` fields.
+* **§4:** `.b3dm` endpoint removed; added `heightmap`, `mesh.glb`, `scar.geojson`, `/events` (SSE), `/lora/ingest`, `/health`. Added the SSE event shape.
+* **§5:** SQLite schema (new).
+* **§6:** Cesium heightmap contract (new), including the geoid offset.
 
 ### 1.0.0
-* Versi awal: LoRa `float32`, `spatial_fusion.json`, prompt LLM, empat endpoint dashboard.
+* Initial version: LoRa `float32`, `spatial_fusion.json`, LLM prompt, four dashboard endpoints.

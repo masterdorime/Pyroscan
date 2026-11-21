@@ -1300,7 +1300,8 @@ function renderSiteShell(site) {
   $('#ss-risk').textContent = spread
     ? `${spread.risk} · ${spread.rate_m_min} m/min` : '—';
   $('#ss-time').textContent = spread
-    ? `${spread.model} · 0–360 min` : '—';
+    ? `${spread.fuel_label || spread.model} · `
+      + `${Math.round((spread.moisture || 0) * 100)}% FM · 0–360 min` : '—';
   $('#sr-name').textContent = `${site.name} · ${site.iso || ''}`;
   $('#sr-window').textContent = `${site.window_km} km · ${site.imagery_mpp} m/px`;
   $('#sr-centre').textContent = `${site.centre.lat.toFixed(3)}, ${site.centre.lon.toFixed(3)}`;
