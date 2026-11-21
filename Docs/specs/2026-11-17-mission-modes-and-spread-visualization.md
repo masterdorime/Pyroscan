@@ -244,6 +244,9 @@ earlier, with a change index. Scene date and cloud on the timeline chip.
    the adapter already tries three candidates, so the remaining work is choosing
    the tile from the centre's UTM cell rather than from a STAC polygon that a
    neighbour can clip.
+   **Resolved 2026-11-18:** ordering now prefers scenes whose bbox contains the
+   window centre (see `Docs/HANDOFF.md` §9.19). What remains for this phase is
+   the two-date swipe, not the read.
 
 Each phase leaves the console working offline.
 
@@ -251,10 +254,11 @@ Each phase leaves the console working offline.
 
 ## 10a. Risks
 
-1. **Sentinel-2 geometry (highest).** The imagery render is unresolved today:
-   `ring lies outside the imagery tile` for the correct tile, and a rasterio IO
-   error for the one that previously worked. Terrain and Regional can ship on the
-   mosaic fallback, but Phase 5 cannot claim 10 m imagery until this is fixed.
+1. **Sentinel-2 geometry (resolved 2026-11-18).** The imagery render was
+   unresolved: `ring lies outside the imagery tile` for the correct tile, and a
+   rasterio IO error for the one that previously worked. The cause was scene
+   ranking, not the CRS maths; see `Docs/HANDOFF.md` §9.19. The 3-day cache TTL
+   and the slow S3 path still mean a stale scene can be what renders.
 2. **A 30 m prediction looks authoritative.** Coarse terrain produces confident
    looking fronts. Mitigation: the resolution is in the model label, the badge and
    the camera clamp.

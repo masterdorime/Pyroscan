@@ -92,15 +92,21 @@ This is a working vertical slice, not a production deployment. Known gaps:
   Open-Meteo as the global fallback, regional fire detections from NASA FIRMS NRT,
   30 m context terrain from Copernicus DEM, and Sentinel-2 imagery cached as WebP.
   Every reading shows its source and age in the **Live data** card.
-- **View modes:** `Drone` (1.6 cm photogrammetry patch), `Terrain` (30 m DEM, works
-  with no drone data) and `Regional` (15 km ring), each with its own camera,
-  clamp, and resolution badge. Deep links: `#/<mission>/<mode>`.
-- **Known blockers:** the Sentinel-2 image is fetched and cached but not yet drawn,
-  and Regional has no ring terrain yet. See `Docs/HANDOFF.md` §9.
+- **View modes:** `Indonesia` (globe + 38 province borders, the default),
+  `Drone` (1.6 cm photogrammetry patch), `Terrain` (4 km of 10 m imagery over
+  30 m terrain) and `Regional` (60 km landscape from a 4-tile DEM and a 2-scene
+  Sentinel-2 mosaic, with a scale bar), each with its own camera, clamp and
+  resolution badge. Deep links: `#/<mission>/<mode>`.
+- **Known gaps:** the wide imagery can show a faint tonal seam where its two
+  satellite dates meet; the terrain is flat-shaded with no sun or atmosphere;
+  and the wide layer falls back to a 15 km ring if its cache is missing. See
+  `Docs/HANDOFF.md` §9.19–25.
 - YOLO fire/smoke detections are not wired; hotspot positions are fixtures.
 - The watcher/NodeODM path has not been exercised on a new flight.
 - Heat, wind, prediction geometry, severity, weather, and advisory are fixtures.
-- The context basemap is flat; there is no context DEM or real sun/shadow model.
+- The context basemap is a 30 m DEM under a Sentinel-2 crop (4 km in Terrain,
+  60 km in Regional); there is still no real sun/shadow model and both terrain
+  surfaces are flat-shaded.
 - The context footprint is an area-equivalent disc, not the exact ortho
   boundary.
 - No auth, PWA, or React/Vite port yet. GitHub Pages is not applicable because

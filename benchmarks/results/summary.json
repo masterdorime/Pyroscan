@@ -1,0 +1,16 @@
+[
+  {
+    "model": "gemma4:e4b",
+    "placement": "100% GPU",
+    "decode_tps": 55.9,
+    "prefill_tps": 895.7,
+    "load_s": 12.41,
+    "wall_s": 16.2,
+    "out_tokens": 190,
+    "vram_peak_mib": 4405,
+    "json": [
+      "ok"
+    ],
+    "sample": "{\n  \"severity\": \"HIGH\",\n  \"summary_narrative\": \"Kebakaran saat ini berada di area dengan kondisi sangat mendukung penyebaran api, ditandai dengan kecepatan angin yang signifikan dan kelembapan rendah. Arah rambat api diprediksi akan bergerak mengikuti arah angin, yaitu dari barat daya menuju timur laut. Tingkat risiko yang tinggi memerlukan respons cepat dan terkoordinasi.\",\n  \"action_items\": [\n    \"Segera alokasikan sumber daya pemadaman tambahan ke koordinat prediksi (lat -6.9120, lon 107.6250).\",\n    \"Aktifkan jalur evakuasi alternatif yang menjauhi arah angin (barat daya ke timur laut).\",\n    \"Tingkatkan kewaspadaan pemantauan asap dan hotspot di sepanjang jalur prediksi pergerakan api.\"\n  ]\n}"
+  }
+]

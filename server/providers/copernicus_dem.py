@@ -158,6 +158,104 @@ def crop_dem(source, extent: Extent, size: int = 256) -> dict:
 ASSET_NAME = "context_dem.json"
 
 
+def tiles_for(extent: Extent) -> list[str]:
+    """Every 1-degree cell the box touches, by SW corner (no duplicates)."""
+    south, north = math.floor(extent.south), math.floor(extent.north)
+    west, east = math.floor(extent.west), math.floor(extent.east)
+    names: list[str] = []
+    for lat in range(south, north + 1):
+        for lon in range(west, east + 1):
+            name = tile_name(float(lat), float(lon))
+            if name not in names:
+                names.append(name)
+    return names
+
+
+def crop_dem_mosaic(extent: Extent, size: int = 256, *, source_for=None) -> dict:
+    """Stitch every tile the box touches into one heightmap.
+
+    Tiles are EPSG:4326, so no reprojection is involved: each tile's intersection
+    with the box maps proportionally to a destination rectangle in the output
+    grid. Reads pass `out_shape` so GDAL serves an overview instead of full
+    resolution — that is what makes a 60 km box affordable.
+    """
+    from rasterio.windows import from_bounds
+
+    resolve = source_for or tile_url
+    grid = np.full((size, size), np.nan, dtype="float64")
+    used: list[str] = []
+    missing: list[str] = []
+    covered = 0
+
+    span_lon = (extent.east - extent.west) or 1e-12
+    span_lat = (extent.north - extent.south) or 1e-12
+
+    with rasterio.Env(GDAL_HTTP_TIMEOUT="30", GDAL_HTTP_CONNECTTIMEOUT="10",
+                      GDAL_DISABLE_READDIR_ON_OPEN="EMPTY_DIR"):
+        for name in tiles_for(extent):
+            try:
+                source = resolve(name)
+                with rasterio.open(source) as ds:
+                    b = ds.bounds
+                    west = max(extent.west, b.left)
+                    south = max(extent.south, b.bottom)
+                    east = min(extent.east, b.right)
+                    north = min(extent.north, b.top)
+                    if west >= east or south >= north:
+                        continue     # touches a corner only
+                    x0 = int(round((west - extent.west) / span_lon * size))
+                    x1 = int(round((east - extent.west) / span_lon * size))
+                    y0 = int(round((extent.north - north) / span_lat * size))
+                    y1 = int(round((extent.north - south) / span_lat * size))
+                    x1 = min(size, max(x1, x0 + 1))
+                    y1 = min(size, max(y1, y0 + 1))
+                    window = from_bounds(west, south, east, north,
+                                         transform=ds.transform)
+                    block = ds.read(1, window=window, boundless=False,
+                                    out_shape=(y1 - y0, x1 - x0)).astype("float64")
+                    if ds.nodata is not None:
+                        block[block == ds.nodata] = np.nan
+                    grid[y0:y1, x0:x1] = block
+                    used.append(name)
+                    covered += (x1 - x0) * (y1 - y0)
+            except Exception:
+                missing.append(name)
+                continue
+
+    finite = grid[np.isfinite(grid)]
+    if not finite.size:
+        raise ProviderError("parse", "no DEM tile covered the ring")
+    fill = float(np.median(finite))
+    holes = int((~np.isfinite(grid)).sum())
+    grid = np.where(np.isfinite(grid), grid, fill)
+
+    heightmap = {
+        "mission_id": "context",
+        "width": int(size),
+        "height": int(size),
+        "west": float(extent.west),
+        "south": float(extent.south),
+        "east": float(extent.east),
+        "north": float(extent.north),
+        "height_scale_m": 1.0,
+        "geoid_offset_m": 0.0,
+        "base_height_m": 0.0,
+        "h_min": float(grid.min()),
+        "h_max": float(grid.max()),
+        "heights_m": [float(v) for v in grid.ravel()],
+    }
+    return {
+        "heightmap": heightmap,
+        "clipped": bool(missing) or (covered / (size * size)) < 0.995,
+        "nodata_px": holes,
+        "tiles": used,
+        "missing_tiles": missing,
+        "coverage": round(covered / (size * size), 4),
+        "bbox": {"west": float(extent.west), "south": float(extent.south),
+                 "east": float(extent.east), "north": float(extent.north)},
+    }
+
+
 class CopernicusDemProvider:
     """30 m context terrain. One full tile per ring; see spec 7.5."""
 
@@ -171,11 +269,21 @@ class CopernicusDemProvider:
     allow_inline = False
     requires: tuple[str, ...] = ()
 
-    def __init__(self, *, tile_fetcher=None, size: int = 256) -> None:
+    def __init__(self, *, tile_fetcher=None, size: int = 256,
+                 window_km: float | None = None, key: str = "context_dem",
+                 asset: str = ASSET_NAME,
+                 source_label: str | None = None) -> None:
         # None means "read the remote COG window directly". A callable is a test
         # seam that yields a local file, which is how the parser tests run offline.
         self.tile_fetcher = tile_fetcher
         self.size = size
+        # window_km expands the mission ring to a fixed box around its centre:
+        # the wide Regional DEM. None keeps the caller's ring (15 km).
+        self.window_km = window_km
+        self.key = key
+        self.asset = asset
+        if source_label:
+            self.source_label = source_label
 
     def fetch(self, extent: Extent, cfg) -> "ProviderPayload":
         import json
@@ -183,17 +291,24 @@ class CopernicusDemProvider:
         import tempfile
 
         from .base import ProviderPayload
+        from .geo import square_extent
+
+        if self.window_km:
+            lat, lon = extent.centre
+            extent = square_extent(lat, lon, self.window_km / 2)
 
         name = tile_name(*extent.centre)
         try:
             if self.tile_fetcher is None:
-                # Windowed read straight from the COG: ~0.85 MB for a 25 km ring.
-                cropped = crop_dem(tile_url(name), extent, size=self.size)
+                # Windowed read straight from the COGs, stitched across tiles.
+                cropped = crop_dem_mosaic(extent, size=self.size)
             else:
                 workdir = Path(tempfile.mkdtemp(prefix="pyroscan-dem-"))
                 try:
-                    tile = self.tile_fetcher(name, workdir / f"{name}.tif")
-                    cropped = crop_dem(tile, extent, size=self.size)
+                    def local(name_: str) -> Path:
+                        return self.tile_fetcher(name_, workdir / f"{name_}.tif")
+                    cropped = crop_dem_mosaic(extent, size=self.size,
+                                              source_for=local)
                 finally:
                     shutil.rmtree(workdir, ignore_errors=True)
         except ProviderError:
@@ -209,11 +324,14 @@ class CopernicusDemProvider:
             "height": heightmap["height"],
             "h_min": heightmap["h_min"],
             "h_max": heightmap["h_max"],
-            "asset": ASSET_NAME,
+            "asset": self.asset,
             "source_resolution_m": SOURCE_RESOLUTION_M,
             "clipped": cropped["clipped"],
             "nodata_px": cropped["nodata_px"],
             "source_tile": name,
+            "tiles": cropped.get("tiles", [name]),
+            "coverage": cropped.get("coverage", 1.0),
+            "window_km": self.window_km,
         }
         return ProviderPayload(data, None,
-                               extra={"asset_name": ASSET_NAME, "asset_bytes": blob})
+                               extra={"asset_name": self.asset, "asset_bytes": blob})

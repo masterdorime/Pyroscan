@@ -146,11 +146,12 @@ layer for MODE-B: bands, not just a polygon outline.
   Heat, prediction, flight path, base surfaces, and minimap are hidden.
 - **Reconstruction:** patch + base/overlays, camera 220 m / -30°, minimap and
   layer controls return; `Context` pill or zoom-out exits.
-- **Paper scene:** bright 1.35 km context mosaic (opaque centre + translucent
-  outer ring) from `context_bright.png` (graded cached Esri context), at the
-  patch base; CSS horizon haze; sky `#dfe8e3`; camera 300 m / -22° in Context.
-  A contact shadow grounds the patch; satellite context also lives in the
-  **minimap** (reconstruction only).
+- **Paper scene:** bright 1.35 km context mosaic at the patch base; CSS horizon
+  haze; sky `#dfe8e3`; camera 300 m / -22° in Context. In Terrain/Regional the
+  mosaic is the cached Sentinel-2 crop; in Drone and whenever no imagery is
+  cached it is `context_bright.png` (graded Esri, opaque centre + feathered
+  translucent ring). A contact shadow grounds the patch; satellite context also
+  lives in the **minimap** (reconstruction only).
 - **Obsidian scene:** dark studio floor + faint grid, fading into the void;
   same patch, shadow, and minimap.
 - **Mission patch:** 384² mesh from the real ODM DSM, real ortho texture. Paper
@@ -160,8 +161,17 @@ layer for MODE-B: bands, not just a polygon outline.
 - **Overlays:** heat as an offset mesh; prediction as per-position-height
   fronts; wind as 3D arrows; hotspots as ringed pins (hotspots also in Context).
 - **Grounding:** contact shadow under the patch; quiet vignette.
-- **Limitation:** the context is a flat 30 m basemap, not a context DEM, and
-  there is no real sun/shadow model. The patch remains a high-res inset.
+- **Context surfaces (2026-11-18):** Terrain draws the full 4 km Sentinel-2 crop
+  over a 128² mesh from a 2-tile Copernicus mosaic (no west clip). Regional
+  draws a 60 km ring (128²) textured by a 2-scene Sentinel-2 mosaic over a
+  4-tile DEM, with the 4 km detail surface on top and a scale bar. The size
+  ladder is stated, not implied: 1.6 cm patch → 10 m over 4 km → ~60 m over
+  60 km. Drone keeps the Esri backdrop unchanged.
+- **Limitation:** both rings are flat-shaded hillshade/imagery, not lit
+  surfaces; there is still no sun, shadow or atmosphere. The wide imagery has a
+  faint seam where its two dates meet, and its coarse cells meet the fine 4 km
+  surface through a one-cell blend under the patch (invisible at Regional
+  scale, but the seam is not a survey match).
 
 ### 5.2 Base surfaces
 

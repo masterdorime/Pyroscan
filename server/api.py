@@ -19,6 +19,11 @@ from .pipeline import fusion as fusion_mod
 from .pipeline import weather as weather_mod
 from .providers.gateway import default_gateway
 from .providers.geo import mission_extent
+from .providers.base import ProviderError
+from .providers.provinces import clamp_days, overview
+from .providers.province_plate import (PlateUnavailable, build_plate,
+                                       plate_path)
+from .providers.site import SiteUnavailable, build_site, site_paths
 from .providers import cache as provider_cache
 
 app = FastAPI(title="PyroScan", version="0.1.0")
@@ -89,6 +94,17 @@ def _provider_detail(result) -> str | None:
         return f"{when} · {round(cloud)}% cloud" if cloud is not None else when
     if result.key == "context_dem" and data.get("clipped"):
         return "clipped ring"
+    if result.key == "context_dem_wide":
+        tiles = data.get("tiles") or []
+        text = f"{len(tiles)} tile" + ("s" if len(tiles) != 1 else "")
+        return text + (" · clipped" if data.get("clipped") else "")
+    if result.key == "context_imagery_wide":
+        rng = data.get("date_range") or []
+        n = data.get("scene_count") or len(data.get("scenes") or [])
+        units = f"{n} scene" + ("s" if n != 1 else "")
+        if len(rng) == 2 and rng[0] != rng[1]:
+            return f"{units} · {rng[0]} – {rng[1]}"
+        return f"{units} · {rng[0]}" if rng else units
     return None
 
 
@@ -220,6 +236,117 @@ def _prediction(bundle: dict, weather: dict) -> dict:
             "key_events": events}
 
 
+def _imagery(result, mission_id: str, gw) -> dict | None:
+    """What the scene needs to draw the imagery honestly, or None.
+
+    `assets.context_imagery` stays the plain URL the dashboard already used;
+    this adds the footprint, date and credit without growing `providers.items`.
+    """
+    if result is None or not result.data:
+        return None
+    data = result.data
+    cached = provider_cache.mission_dir(mission_id, gw.root) / data.get(
+        "asset", "context_imagery.webp")
+    if not cached.exists():
+        return None
+    return {
+        "url": f"/api/v1/missions/{mission_id}/context/imagery.webp",
+        "bbox": data.get("bbox"),
+        "scene_id": data.get("scene_id"),
+        "acquired_at": data.get("acquired_at"),
+        "cloud_pct": data.get("cloud_pct"),
+        "resolution_m": data.get("resolution_m"),
+        "window_km": data.get("window_km"),
+        "status": result.status,
+        "age_s": result.age_s,
+        "attribution": result.attribution,
+        "licence": result.licence,
+    }
+
+
+def _dem(result, mission_id: str, gw) -> dict | None:
+    """Footprint and provenance of the cached context DEM, or None.
+
+    The client needs the footprint before it builds the local mesh: the drawn
+    area is the intersection of the image and the DEM, so a wider image must
+    not be drawn past the DEM tile edge.
+    """
+    if result is None or not result.data:
+        return None
+    data = result.data
+    cached = provider_cache.mission_dir(mission_id, gw.root) / data.get(
+        "asset", "context_dem.json")
+    if not cached.exists():
+        return None
+    return {
+        "url": f"/api/v1/missions/{mission_id}/context/dem",
+        "bbox": data.get("bbox"),
+        "width": data.get("width"),
+        "height": data.get("height"),
+        "h_min": data.get("h_min"),
+        "h_max": data.get("h_max"),
+        "source_tile": data.get("source_tile"),
+        "source_resolution_m": data.get("source_resolution_m"),
+        "clipped": data.get("clipped"),
+        "status": result.status,
+        "age_s": result.age_s,
+        "attribution": result.attribution,
+        "licence": result.licence,
+    }
+
+
+def _imagery_wide(result, mission_id: str, gw) -> dict | None:
+    if result is None or not result.data:
+        return None
+    data = result.data
+    cached = provider_cache.mission_dir(mission_id, gw.root) / data.get(
+        "asset", "context_imagery_wide.webp")
+    if not cached.exists():
+        return None
+    return {
+        "url": f"/api/v1/missions/{mission_id}/context/imagery_wide.webp",
+        "bbox": data.get("bbox"),
+        "scenes": data.get("scenes") or [],
+        "scene_count": data.get("scene_count") or len(data.get("scenes") or []),
+        "date_range": data.get("date_range") or [],
+        "multi_date": data.get("multi_date"),
+        "cloud_pct": data.get("cloud_pct"),
+        "resolution_m": data.get("resolution_m"),
+        "window_km": data.get("window_km"),
+        "coverage": data.get("coverage"),
+        "status": result.status,
+        "age_s": result.age_s,
+        "attribution": result.attribution,
+        "licence": result.licence,
+    }
+
+
+def _dem_wide(result, mission_id: str, gw) -> dict | None:
+    if result is None or not result.data:
+        return None
+    data = result.data
+    cached = provider_cache.mission_dir(mission_id, gw.root) / data.get(
+        "asset", "context_dem_wide.json")
+    if not cached.exists():
+        return None
+    return {
+        "url": f"/api/v1/missions/{mission_id}/context/dem_wide",
+        "bbox": data.get("bbox"),
+        "width": data.get("width"),
+        "height": data.get("height"),
+        "h_min": data.get("h_min"),
+        "h_max": data.get("h_max"),
+        "tiles": data.get("tiles") or [],
+        "coverage": data.get("coverage"),
+        "clipped": data.get("clipped"),
+        "window_km": data.get("window_km"),
+        "status": result.status,
+        "age_s": result.age_s,
+        "attribution": result.attribution,
+        "licence": result.licence,
+    }
+
+
 def _payload(mission: dict, background=None) -> dict:
     conn = _conn()
     bundle = db.mission_bundle(conn, mission["id"])
@@ -262,6 +389,11 @@ def _payload(mission: dict, background=None) -> dict:
             "stages": config.STAGES,
         },
         "context": config.CONTEXT,
+        "imagery": _imagery(results.get("context_imagery"), mission["id"], gw),
+        "imagery_wide": _imagery_wide(results.get("context_imagery_wide"),
+                                      mission["id"], gw),
+        "dem": _dem(results.get("context_dem"), mission["id"], gw),
+        "dem_wide": _dem_wide(results.get("context_dem_wide"), mission["id"], gw),
         "weather": weather,
         "providers": providers_summary(results, extent.ring_km, gw.cfg.offline),
         "regional_fires": fires.data if fires and fires.data else None,
@@ -451,6 +583,84 @@ def mission_regional_fires(mission_id: str, background: BackgroundTasks,
     return asdict(result)
 
 
+@app.get("/api/v1/provinces.geojson")
+def provinces_geojson():
+    path = Path(__file__).resolve().parent / "providers" / "data" / "provinces.geojson"
+    if not path.exists():
+        raise HTTPException(404, "province boundaries not bundled")
+    return FileResponse(path, media_type="application/geo+json")
+
+
+@app.get("/api/v1/overview/fires")
+def overview_fires(days: int = 5):
+    """Country-wide FIRMS summary, aggregated per province.
+
+    Always 200: an unavailable source is a stated reason, not a silent zero.
+    The client keeps borders and says `detections unavailable`.
+    """
+    gw = default_gateway()
+    window = clamp_days(days)
+    if gw.cfg.offline:
+        return {"available": False, "reason": "offline", "window_days": window,
+                "provinces": {}, "dots": [], "count": 0}
+    try:
+        return {"available": True, **overview(gw.cfg, window)}
+    except ProviderError as exc:
+        return {"available": False, "reason": exc.detail, "window_days": window,
+                "provinces": {}, "dots": [], "count": 0}
+
+
+@app.get("/api/v1/sites")
+def site_context(lat: float, lon: float, window_km: float = 18.0,
+                 force: bool = False):
+    """A real DEM + Sentinel-2 context at a fire dot. Not drone recon."""
+    try:
+        return {"available": True, **build_site(lon, lat, window_km=window_km,
+                                                force=force)}
+    except SiteUnavailable as exc:
+        return {"available": False, "reason": exc.detail}
+    except ProviderError as exc:
+        return {"available": False, "reason": exc.detail}
+
+
+@app.get("/api/v1/sites/{site_id}/imagery.webp")
+def site_imagery(site_id: str):
+    try:
+        _, path = site_paths(site_id)
+    except SiteUnavailable:
+        raise HTTPException(404, "unknown site")
+    if not path.exists():
+        raise HTTPException(404, "site imagery not built")
+    return FileResponse(path, media_type="image/webp")
+
+
+@app.get("/api/v1/provinces/{code}/imagery")
+def province_imagery(code: str, tier: str = "preview", force: bool = False):
+    """Build (or read) the masked plate; the WebP itself is a second request."""
+    import re
+    code = code.upper()
+    if not re.fullmatch(r"ID-[A-Z]{2}", code):
+        raise HTTPException(404, "unknown province")
+    try:
+        built = build_plate(code, tier, force=force)
+    except PlateUnavailable as exc:
+        return {"available": False, "reason": exc.detail, "iso": code, "tier": tier}
+    return {"available": True, **built["meta"],
+            "url": f"/api/v1/provinces/{code}/imagery.webp?tier={tier}"}
+
+
+@app.get("/api/v1/provinces/{code}/imagery.webp")
+def province_imagery_webp(code: str, tier: str = "preview"):
+    import re
+    code = code.upper()
+    if not re.fullmatch(r"ID-[A-Z]{2}", code) or tier not in {"preview", "detail"}:
+        raise HTTPException(404, "unknown province imagery")
+    path = plate_path(code, tier)
+    if not path.exists():
+        raise HTTPException(404, "province imagery not built")
+    return FileResponse(path, media_type="image/webp")
+
+
 @app.get("/api/v1/missions/{mission_id}/context/dem")
 def mission_context_dem(mission_id: str):
     m = db.get_mission(_conn(), mission_id)
@@ -460,6 +670,18 @@ def mission_context_dem(mission_id: str):
             / "context_dem.json")
     if not path.exists():
         raise HTTPException(404, "context dem not cached")
+    return FileResponse(path, media_type="application/json")
+
+
+@app.get("/api/v1/missions/{mission_id}/context/dem_wide")
+def mission_context_dem_wide(mission_id: str):
+    m = db.get_mission(_conn(), mission_id)
+    if not m:
+        raise HTTPException(404, "mission not found")
+    path = (provider_cache.mission_dir(mission_id, default_gateway().root)
+            / "context_dem_wide.json")
+    if not path.exists():
+        raise HTTPException(404, "wide context dem not cached")
     return FileResponse(path, media_type="application/json")
 
 
@@ -475,6 +697,18 @@ def mission_context_imagery(mission_id: str):
     return FileResponse(path, media_type="image/webp")
 
 
+@app.get("/api/v1/missions/{mission_id}/context/imagery_wide.webp")
+def mission_context_imagery_wide(mission_id: str):
+    m = db.get_mission(_conn(), mission_id)
+    if not m:
+        raise HTTPException(404, "mission not found")
+    path = (provider_cache.mission_dir(mission_id, default_gateway().root)
+            / "context_imagery_wide.webp")
+    if not path.exists():
+        raise HTTPException(404, "wide context imagery not cached")
+    return FileResponse(path, media_type="image/webp")
+
+
 @app.get("/api/v1/events")
 async def events():
     async def stream():
@@ -487,6 +721,13 @@ async def events():
 @app.get("/favicon.ico")
 def favicon():
     return Response(status_code=204)
+
+
+@app.get("/dashboard.html")
+def dashboard_html():
+    """Never cache the shell; its versioned assets change with the renderer."""
+    return FileResponse(config.WEB / "dashboard.html", media_type="text/html",
+                        headers={"Cache-Control": "no-store"})
 
 
 app.mount("/data", StaticFiles(directory=str(config.WEB / "data")), name="data")

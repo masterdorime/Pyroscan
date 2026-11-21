@@ -1,4 +1,4 @@
-# Next Agent Prompt — PyroScan providers, modes, and the two blockers
+# Next Agent Prompt — PyroScan providers, modes, and the fixed blockers
 
 You are the next agent on **PyroScan**. Do not rely on prior chat context. Read,
 in order:
@@ -16,10 +16,10 @@ in order:
 
 ## 1. Where the product actually is
 
-The provider layer works. The dashboard shows almost none of it. Hold those two
-facts together — most of the work left is the gap between them.
+The provider layer works and the dashboard now shows the terrain and imagery.
+The remaining gap is the prediction, which is still a fixture.
 
-**Shipped and tested (77/77 offline, `python -m server.providers.selftest`):**
+**Shipped and tested (91/91 offline, `python -m server.providers.selftest`):**
 
 - Gateway with per-mission file cache, read-time status (7 states), fallback
   chains, single-flight refresh, fixture fallback, secrets server-side only.
@@ -31,49 +31,40 @@ facts together — most of the work left is the gap between them.
 - Copernicus DEM 30 m, read as a **windowed** COG (0.85 MB for 25 km), cropped to
   a 256² ring heightmap (~712 KB cached), `/context/dem`, Context relief.
 - Sentinel-2 **data layer**: STAC search, windowed `TCI.tif` read with CRS
-  reprojection, graded WebP (40–115 KB), `/context/imagery.webp`.
+  reprojection, graded WebP (40–115 KB), `/context/imagery.webp`, and the crop is
+  now **drawn** in Terrain/Regional, registered by the provider bbox.
 - **View modes (Phase 1 of the modes spec):** `Drone · Terrain · Regional` tabs
   with per-mode camera presets and clamps, resolution+age badges,
   disabled-with-reason states, and `#/<mission>/<mode>` deep links. Zoom no longer
-  switches mode.
+  switches mode. Terrain draws 4 km of 10 m imagery; Regional draws a 60 km
+  landscape from a 4-tile DEM and a 2-scene imagery mosaic, with a scale bar.
 
-**Two blockers.** Both are "the data arrives and the pixels don't" problems:
+**The two old blockers are fixed (2026-11-18).** Causes, evidence and residuals
+are in `Docs/HANDOFF.md` §9.19–20; do not re-litigate them from memory.
 
-1. **Sentinel-2 never reaches the scene.** The asset is fetched, graded and
-   served; the render is disabled in `spike/web/dashboard.js`. The read picks a
-   neighbouring UTM tile for the 4 km window (`ring lies outside the imagery
-   tile`), and the tile that previously worked returned a rasterio IO error.
-2. **Regional has no ring terrain.** A 128×128 tinted mesh over the DEM bbox was
-   built, added, and never appeared (no console error). It was reverted rather
-   than left as dead code. `phase4-regional.png` shows the symptom: a 1.35 km
-   mosaic diamond floating on empty background.
+1. **Sentinel-2** — two causes: scene ranking trusted STAC `intersects` and cloud
+   only, so a neighbouring tile that merely grazed the window won; and the
+   renderer hardcoded the Esri PNG. Both fixed; selection now ranks window-centre
+   coverage first.
+2. **Regional ring** — the reverted mesh never reached a commit, so the named
+   suspects were tested instead: `Color` + `flat: true` renders, and a wrong
+   bounding sphere silently culls with no console error. The new mesh derives its
+   sphere from its vertex buffer and is verified in the browser.
 
 ---
 
 ## 2. What to do first, and how
 
-**Do not fix either blocker by editing and screenshotting.** That was tried
-repeatedly last session and cost a lot of tokens for no progress. Instrument
-first.
+**Do not fix anything by editing and screenshotting.** That was tried repeatedly
+in earlier sessions and cost a lot of tokens for no progress. Instrument first.
 
-For the Sentinel-2 blocker, one standalone probe:
-
-```python
-# prints crs, bounds, transformed window, and whether the window is inside
-ds.crs, ds.bounds, ds.width, ds.height
-transform_bounds("EPSG:4326", ds.crs, w, s, e, n)
-```
-
-Run it against one known-good scene, compare with what
-`server/providers/sentinel2.py:read_scene_window` computes, and only then change
-code. The adapter already tries three candidates (`pick_scenes`), so the open
-question is *which tile contains the window centre*, not how many to try.
-
-For the ring terrain, instrument the primitive: log whether it is in
-`viewer.scene.primitives`, whether `show` is true, its `boundingSphere`, and
-whether the material renders at all with a known-good `Image` material swapped
-in. Candidates: `Color` + `flat: true`, bounding-sphere culling at 30 km ECEF
-scale, depth ordering against the mosaic quad.
+- For imagery geometry, run `python tools/probe_sentinel2_window.py`. It prints
+  `ds.crs`, `ds.bounds`, the transformed window, ring coverage, the pixel window
+  and the actual read, and compares it with `read_scene_window`.
+- For a Cesium primitive, log whether it is in the collection, `show`, `ready`,
+  its bounding sphere, and whether it draws with a known-good material. Picking a
+  pixel with `scene.pick`/`pickPosition` is cheaper than a screenshot — but
+  `pickPosition` is depth-quantised at 3 km and its heights are not trustworthy.
 
 ---
 
@@ -137,8 +128,10 @@ Python 3.14, FastAPI, uvicorn, requests, numpy, pillow, tifffile, **rasterio
 1.5.2 (cp314 wheel)**. Node 24, Cesium 1.147 bundled locally, Playwright Edge.
 
 ```powershell
-python -m server.providers.selftest          # 77/77, no network
+python -m server.providers.selftest          # 91/91, no network
 python -m server.selftest                    # pipeline checks
+node spike\web\test-terrain-math.mjs         # DEM grid / datum math
+python tools\probe_sentinel2_window.py       # imagery geometry probe (reads only)
 python -m uvicorn server.api:app --host 127.0.0.1 --port 8000
 # http://127.0.0.1:8000/dashboard.html#/SPIKE_BRIGHTON_ODM/terrain
 
@@ -151,10 +144,7 @@ node spike\web\shot.mjs "http://127.0.0.1:8000/dashboard.html" "spike/shots/x.pn
 
 ## 7. Definition of done for the next slice
 
-- Sentinel-2 imagery visible in Terrain/Regional, dated and cloud-labelled, with
-  the mosaic as fallback.
-- Regional showing ring terrain instead of a floating diamond.
 - The front growing from a fixture ignition under real wind and real terrain, with
   the input strip proving that toggling wind changes its shape.
-- 77+ offline tests green, docs and screenshots updated in the same commit as the
+- 91+ offline tests green, docs and screenshots updated in the same commit as the
   code, `Docs/HANDOFF.md` §9 gaps closed or re-scoped honestly.

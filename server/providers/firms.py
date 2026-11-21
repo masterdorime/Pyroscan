@@ -41,7 +41,8 @@ def _confidence(raw: str | None) -> float:
         return 0.0
 
 
-def parse(csv_text: str, centre: tuple[float, float]) -> ProviderPayload:
+def parse(csv_text: str, centre: tuple[float, float],
+          cap: int = CAP) -> ProviderPayload:
     from .geo import bearing_deg, haversine_km
 
     seen: set[tuple] = set()
@@ -102,7 +103,7 @@ def parse(csv_text: str, centre: tuple[float, float]) -> ProviderPayload:
         "bbox": {"west": west, "south": south, "east": east, "north": north},
         "window_days": WINDOW_DAYS,
         "sensors": sorted({r["sensor"] for r in rows if r["sensor"]}),
-        "detections": rows[:CAP],
+        "detections": rows[:cap],
         "nearest_km": round(
             haversine_km(centre[0], centre[1], nearest["lat"], nearest["lon"]), 2
         ),

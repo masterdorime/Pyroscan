@@ -34,6 +34,20 @@ def extent_from_point(lat: float, lon: float, radius_km: float = 0.5) -> Extent:
     return _padded(lon, lat, lon, lat, radius_km * 2)
 
 
+def square_extent(lat: float, lon: float, half_km: float) -> Extent:
+    """A box `2*half_km` across in both axes, centred on the point.
+
+    Not clamped like `_padded`: the wide Regional layer deliberately asks for
+    more than a 25 km ring.
+    """
+    half_km = abs(float(half_km))
+    lat_pad = half_km / KM_PER_DEG_LAT
+    lon_pad = half_km / (KM_PER_DEG_LAT * max(math.cos(math.radians(lat)), 1e-6))
+    return Extent(west=lon - lon_pad, south=lat - lat_pad,
+                  east=lon + lon_pad, north=lat + lat_pad,
+                  ring_km=half_km * 2)
+
+
 def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     p1, p2 = math.radians(lat1), math.radians(lat2)
     dp = p2 - p1

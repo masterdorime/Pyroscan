@@ -13,7 +13,7 @@
   </script>
   <script>window.CESIUM_BASE_URL = 'cesium/';</script>
   <link rel="stylesheet" href="cesium/Widgets/widgets.css" />
-  <link rel="stylesheet" href="dashboard.css" />
+  <link rel="stylesheet" href="dashboard.css?v=2d-20" />
 </head>
 <body>
   <div id="app" class="mode-context">
@@ -43,8 +43,9 @@
 
       <div class="spacer"></div>
       <nav id="modes" aria-label="View mode">
+        <button type="button" data-mode="indonesia" class="active">Indonesia</button>
         <button type="button" data-mode="drone">Drone</button>
-        <button type="button" data-mode="terrain" class="active">Terrain</button>
+        <button type="button" data-mode="terrain">Terrain</button>
         <button type="button" data-mode="regional">Regional</button>
       </nav>
       <span class="mode-badge" id="mode-badge">—</span>
@@ -70,6 +71,14 @@
 
     <main id="stage">
       <div id="cesium"></div>
+      <canvas id="map2d" aria-label="Indonesia map"></canvas>
+
+      <div id="globe-skin" role="group" aria-label="Map skin">
+        <button type="button" data-skin="relief" aria-pressed="true">Relief</button>
+        <button type="button" data-skin="satellite" aria-pressed="false">Satellite</button>
+        <button type="button" data-skin="atlas" aria-pressed="false">Atlas</button>
+        <button type="button" data-skin="flat" aria-pressed="false">Flat</button>
+      </div>
 
       <button id="open-recon" class="mode-pill" type="button">
         <span>Open reconstruction</span><b id="open-recon-area">0.71 ha</b>
@@ -103,6 +112,10 @@
         <ol class="fi-rows" id="fi-rows"></ol>
       </div>
 
+      <div id="scalebar" hidden>
+        <i id="sb-bar"></i><span id="sb-label">—</span>
+      </div>
+
       <div id="minimap" title="Fit mission">
         <img src="data/context_near.jpg" alt="Mission context" />
         <div id="minimap-box"></div>
@@ -110,6 +123,75 @@
       </div>
 
       <div id="err"></div>
+      <div id="province-tip" hidden></div>
+
+      <section id="province-panel" aria-label="Selected province" hidden>
+        <div class="pp-head">
+          <span class="pp-kicker">Province</span>
+          <button type="button" id="province-clear">Clear</button>
+        </div>
+        <h2 id="pp-name">—</h2>
+        <dl class="pp-facts">
+          <div><dt>ISO</dt><dd id="pp-iso">—</dd></div>
+          <div><dt>Land area</dt><dd id="pp-area">—</dd></div>
+        </dl>
+        <div class="pp-fires">
+          <strong id="pp-count">—</strong>
+          <span id="pp-window">detections · 5 days</span>
+        </div>
+        <p class="pp-meta" id="pp-meta">FIRMS loading…</p>
+        <p class="pp-detect" id="pp-detect" hidden></p>
+        <div class="pp-actions">
+          <button type="button" id="pp-detail" disabled>59 m detail</button>
+          <button type="button" id="pp-site" disabled
+            title="Open the real 12 km terrain around this fire">3D site</button>
+          <span id="pp-imagery">Imagery · next slice</span>
+        </div>
+        <div class="pp-progress" id="pp-progress" role="progressbar"
+          aria-label="Building province imagery" hidden><i></i></div>
+      </section>
+
+      <section id="site-panel" aria-label="Fire site context" hidden>
+        <div class="pp-head">
+          <span class="pp-kicker">Site context</span>
+          <button type="button" id="site-back">Back to map</button>
+        </div>
+        <h2 id="site-name">—</h2>
+        <p class="pp-meta" id="site-facts">—</p>
+        <div class="site-scales" role="group" aria-label="Site window">
+          <button type="button" data-km="4">4 km</button>
+          <button type="button" data-km="18" class="active">18 km</button>
+          <button type="button" data-km="60">60 km</button>
+        </div>
+        <dl class="site-details">
+          <div><dt>Terrain</dt><dd id="site-terrain">—</dd></div>
+          <div><dt>Imagery</dt><dd id="site-imagery-facts">—</dd></div>
+          <div><dt>Fires near</dt><dd id="site-fire-count">—</dd></div>
+          <div><dt>Spread</dt><dd id="site-spread-facts">—</dd></div>
+        </dl>
+        <canvas id="site-profile" width="560" height="64"
+          aria-label="East-west elevation profile"></canvas>
+        <p class="pp-meta" id="site-weather" hidden></p>
+        <p class="pp-detect" id="site-detection" hidden></p>
+        <div id="site-spread" hidden>
+          <div class="ss-head"><span>Spread model</span>
+            <b id="spread-risk">—</b></div>
+          <div class="ss-controls">
+            <button id="spread-play" type="button" aria-label="Play spread">▶</button>
+            <input id="spread-time" type="range" min="0" max="12" step="1"
+              value="0" aria-label="Spread time">
+            <span id="spread-label">+0 min</span>
+          </div>
+        </div>
+      </section>
+
+      <div id="site-loading" hidden>
+        <div class="site-loading-card">
+          <span class="pp-kicker">Site context</span>
+          <p id="site-loading-text">Building 18 km terrain…</p>
+          <div class="pp-progress"><i></i></div>
+        </div>
+      </div>
     </main>
 
     <aside id="rail">
@@ -298,10 +380,75 @@
         </div>
       </div>
     </footer>
+
+    <aside id="site-rail" hidden>
+      <div class="sr-risk"><span>SITE RISK</span><b id="sr-risk">—</b></div>
+      <section class="sr-card">
+        <div class="sr-head">Site</div>
+        <dl class="sr-facts">
+          <div><dt>Province</dt><dd id="sr-name">—</dd></div>
+          <div><dt>Window</dt><dd id="sr-window">—</dd></div>
+          <div><dt>Centre</dt><dd id="sr-centre">—</dd></div>
+          <div><dt>Detection</dt><dd id="sr-detection">—</dd></div>
+          <div><dt>Fires near</dt><dd id="sr-fires">—</dd></div>
+        </dl>
+      </section>
+      <section class="sr-card">
+        <div class="sr-head">Layers</div>
+        <label><input type="checkbox" id="sr-l-imagery" checked> Satellite imagery</label>
+        <label><input type="checkbox" id="sr-l-terrain" checked> Terrain relief</label>
+        <div class="sr-relief"><span>Relief</span>
+          <button type="button" data-ex="1">1×</button>
+          <button type="button" data-ex="2.2" class="active">2.2×</button>
+          <button type="button" data-ex="3">3×</button>
+        </div>
+        <label><input type="checkbox" id="sr-l-spread" checked> Spread isochrones</label>
+        <label><input type="checkbox" id="sr-l-fire" checked> Detection marker</label>
+      </section>
+      <section class="sr-card">
+        <div class="sr-head">Live sources</div>
+        <div class="sr-live"><i></i>NASA FIRMS NRT <span id="sr-firms">—</span></div>
+        <div class="sr-live"><i></i>Open-Meteo <span id="sr-met">—</span></div>
+        <div class="sr-live"><i></i>Copernicus DEM <span id="sr-dem">—</span></div>
+        <div class="sr-live"><i></i>Sentinel-2 <span id="sr-s2">—</span></div>
+      </section>
+      <section class="sr-card sr-drone">
+        <div class="sr-head">Photogrammetry</div>
+        <p>No drone survey at this detection. ODM reconstruction is unavailable.</p>
+      </section>
+    </aside>
+
+    <footer id="site-strip" hidden>
+      <div class="ss-strip-head">
+        <span class="pp-kicker">Site forecast</span>
+        <b id="ss-risk">—</b>
+        <span id="ss-time">—</span>
+      </div>
+      <div class="ss-charts">
+        <div class="ss-chart">
+          <div class="ss-chart-head">Modelled area <b id="ss-area-val">—</b></div>
+          <canvas id="ss-area" width="420" height="64"></canvas>
+        </div>
+        <div class="ss-chart">
+          <div class="ss-chart-head">Rate of spread <b id="ss-rate-val">—</b></div>
+          <canvas id="ss-rate" width="300" height="64"></canvas>
+        </div>
+        <div class="ss-chart">
+          <div class="ss-chart-head">Elevation N–S <b id="ss-elev-val">—</b></div>
+          <canvas id="ss-elev" width="420" height="64"></canvas>
+        </div>
+        <div class="ss-events">
+          <div class="ss-chart-head">Key events</div>
+          <ul id="ss-events-list"></ul>
+        </div>
+      </div>
+    </footer>
   </div>
 
   <script src="cesium/Cesium.js"></script>
-  <script src="dashboard.js"></script>
+  <script src="map2d.js?v=2d-20"></script>
+  <script src="terrain-math.js"></script>
+  <script src="dashboard.js?v=2d-20"></script>
 </body>
 </html>
 
