@@ -609,7 +609,8 @@ button { cursor: pointer; }
   background: rgba(247,243,234,.95); backdrop-filter: blur(8px); box-shadow: var(--shadow); }
 #site-panel[hidden] { display: none; }
 #site-panel h2 { margin: 6px 0 6px; font: 600 22px/1.1 var(--sans); }
-#site-back { border: 1px solid var(--line); background: transparent; border-radius: 3px;
+.pp-head-actions { display: flex; gap: 6px; }
+#site-mission, #site-back { border: 1px solid var(--line); background: transparent; border-radius: 3px;
   padding: 3px 8px; font: 600 9px var(--mono); letter-spacing: .06em;
   text-transform: uppercase; color: var(--text); cursor: pointer; }
 #site-loading { position: absolute; inset: 0; z-index: 12; display: grid;

@@ -2978,6 +2978,11 @@ function wireUI() {
   if (siteBtn) siteBtn.addEventListener('click', openSiteFromSelection);
   const siteBack = $('#site-back');
   if (siteBack) siteBack.addEventListener('click', exitSite);
+  const siteMission = $('#site-mission');
+  if (siteMission) siteMission.addEventListener('click', () => {
+    teardownSite();
+    setViewMode('terrain', { animate: false });
+  });
   $$('.site-scales button').forEach((b) => b.addEventListener('click',
     () => loadSiteWindow(Number(b.dataset.km))));
   const siteLayer = (id, fn) => {
